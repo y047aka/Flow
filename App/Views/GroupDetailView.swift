@@ -13,7 +13,8 @@ struct GroupDetailView: View {
             if let catalog = model.catalog, let id = currentID, let asset = catalog.assets[id] {
                 DevelopedPreview(asset: asset, recipe: catalog.recipe(for: id))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                MetadataBar(asset: asset, analysis: catalog.analyses[id], isBest: id == group.bestAssetID)
+                MetadataBar(asset: asset, analysis: catalog.analyses[id], isBest: id == group.bestAssetID,
+                            isAutoTonePending: model.isAutoTonePending(id))
             }
             if group.assetIDs.count > 1 {
                 ScrollView(.horizontal) {
@@ -36,6 +37,9 @@ struct GroupDetailView: View {
             }
         }
         .navigationTitle("\(group.assetIDs.count) 枚の類似ショット")
+        // 開いている写真の自動補正を最優先で計算させる。計算が済むとレシピが変わり、プレビューが再現像される。
+        .task(id: currentID) { model.focusedAssetID = currentID }
+        .onDisappear { model.focusedAssetID = nil }
     }
 }
 
@@ -80,6 +84,7 @@ private struct MetadataBar: View {
     let asset: PhotoAsset
     let analysis: ImageAnalysis?
     let isBest: Bool
+    let isAutoTonePending: Bool
 
     var body: some View {
         HStack(spacing: 16) {
@@ -87,6 +92,13 @@ private struct MetadataBar: View {
             Text(asset.fileName).bold()
             Text(exposureSummary).foregroundStyle(.secondary)
             Spacer()
+            if isAutoTonePending {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("自動補正を計算中（今は撮って出し）")
+                }
+                .foregroundStyle(.secondary)
+            }
             if let score = analysis?.aestheticsScore {
                 Text("美しさ \(score, format: .number.precision(.fractionLength(2)))")
             }

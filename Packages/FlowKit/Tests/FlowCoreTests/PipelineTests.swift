@@ -29,7 +29,6 @@ final class LibraryPipelineTests: XCTestCase {
         let pipeline = LibraryPipeline(
             metadataReader: FakeMetadataReader(),
             analyzer: FakeAnalyzer(),
-            toneMeasurer: FakeToneMeasurer(),
             maximumConcurrency: 2
         )
         let stages = LockedArray<LibraryPipeline.Stage>()
@@ -42,8 +41,61 @@ final class LibraryPipelineTests: XCTestCase {
         // シャープネスが高い 2 枚目がベスト
         let firstGroup = result.catalog.scenes[0].groups[0]
         XCTAssertEqual(result.catalog.assets[firstGroup.bestAssetID!]?.fileName, "1_0.1.raw")
-        XCTAssertGreaterThan(result.catalog.recipe(for: firstGroup.bestAssetID!).exposure, 0)
-        XCTAssertEqual(Set(stages.values), [.readingMetadata, .analyzing, .estimatingTone, .grouping])
+        XCTAssertEqual(Set(stages.values), [.readingMetadata, .analyzing, .grouping])
+        // 自動補正は取り込みでは計算しない（撮って出しのまま）
+        XCTAssertTrue(result.catalog.autoRecipes.isEmpty)
+        XCTAssertEqual(result.catalog.recipe(for: firstGroup.bestAssetID!), DevelopRecipe())
+    }
+}
+
+final class AutoToneTests: XCTestCase {
+    /// シーン 1: [a, b]（ベスト b）、[c]（ベスト c） / シーン 2: [d, e]（ベスト e）
+    private func makeCatalog() -> (Catalog, [PhotoAsset]) {
+        let assets = ["a", "b", "c", "d", "e"].map { makeAsset($0, at: 0) }
+        let ids = assets.map(\.id)
+        let catalog = Catalog(
+            assets: Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) }),
+            scenes: [
+                PhotoScene(startDate: nil, endDate: nil, groups: [
+                    SimilarGroup(assetIDs: [ids[0], ids[1]], bestAssetID: ids[1]),
+                    SimilarGroup(assetIDs: [ids[2]], bestAssetID: ids[2]),
+                ]),
+                PhotoScene(startDate: nil, endDate: nil, groups: [
+                    SimilarGroup(assetIDs: [ids[3], ids[4]], bestAssetID: ids[4]),
+                ]),
+            ]
+        )
+        return (catalog, assets)
+    }
+
+    func testPriorityIsFocusedThenBestShotsThenRest() {
+        let (catalog, assets) = makeCatalog()
+        let names = { (ids: [PhotoAsset.ID]) in ids.compactMap { catalog.assets[$0]?.fileName } }
+        XCTAssertEqual(names(catalog.autoTonePriority()), ["b", "c", "e", "a", "d"])
+        XCTAssertEqual(names(catalog.autoTonePriority(focusedOn: assets[3].id)), ["d", "b", "c", "e", "a"])
+    }
+
+    func testCompletedPhotosAreSkipped() {
+        let (catalog, assets) = makeCatalog()
+        let updated = catalog
+            .with(autoRecipe: DevelopRecipe(exposure: 0.5), for: assets[1].id)
+            .with(autoRecipe: DevelopRecipe(), for: assets[3].id)
+        XCTAssertEqual(updated.autoTonePriority(focusedOn: assets[3].id).compactMap { updated.assets[$0]?.fileName }, ["c", "e", "a"])
+        XCTAssertEqual(updated.autoToneProgress.completed, 2)
+        XCTAssertEqual(updated.autoToneProgress.total, 5)
+        XCTAssertEqual(updated.recipe(for: assets[1].id).exposure, 0.5)
+        // 元のカタログは変わらない
+        XCTAssertTrue(catalog.autoRecipes.isEmpty)
+    }
+
+    func testRecipeForUnknownAssetIsIgnored() {
+        let (catalog, _) = makeCatalog()
+        XCTAssertTrue(catalog.with(autoRecipe: DevelopRecipe(exposure: 1), for: UUID()).autoRecipes.isEmpty)
+    }
+
+    func testServiceEstimatesFromMeasuredHistogram() async throws {
+        let recipe = try await AutoToneService(measurer: FakeToneMeasurer()).recipe(for: makeAsset("a", at: 0))
+        XCTAssertGreaterThan(recipe.exposure, 0) // 暗いヒストグラム → 明るくする
     }
 }
 

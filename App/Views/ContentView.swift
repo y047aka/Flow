@@ -62,6 +62,16 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem {
+            if let progress = model.autoToneProgress {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("自動補正 \(progress.completed) / \(progress.total)")
+                        .font(.caption).monospacedDigit()
+                }
+                .help("自動補正を裏で計算しています。計算が済んでいない写真は撮って出しで表示されます。")
+            }
+        }
+        ToolbarItem {
             Button { pickFolder(for: .importPhotos) } label: {
                 Label("取り込み", systemImage: "square.and.arrow.down")
             }

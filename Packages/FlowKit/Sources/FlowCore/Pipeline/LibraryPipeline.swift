@@ -1,13 +1,15 @@
 import Foundation
 
-/// 取り込み → 解析 → 自動補正推定 → グルーピング を一括で行う。
+/// 取り込み → 解析 → グルーピング を一括で行う。
+///
+/// 自動補正の推定（RAW の現像が必要で重い）はここでは行わない。取り込み後すぐに操作できるよう、
+/// アプリ側が `AutoToneService` で裏で少しずつ計算する。
 ///
 /// 各段は「全写真に並列で関数を適用し（`concurrentMap`）、成功した結果だけを集める」という同じ形をしている。
 public struct LibraryPipeline: Sendable {
     public enum Stage: String, Sendable {
         case readingMetadata
         case analyzing
-        case estimatingTone
         case grouping
     }
 
@@ -27,25 +29,19 @@ public struct LibraryPipeline: Sendable {
 
     public let metadataReader: any MetadataReading
     public let analyzer: any ImageAnalyzing
-    public let toneMeasurer: any ToneMeasuring
     public let grouper: CatalogGrouper
-    public let toneEstimator: AutoToneEstimator
     /// 同時に処理する枚数。iPad ではメモリを考慮して小さめにする。
     public let maximumConcurrency: Int
 
     public init(
         metadataReader: any MetadataReading,
         analyzer: any ImageAnalyzing,
-        toneMeasurer: any ToneMeasuring,
         grouper: CatalogGrouper = .init(),
-        toneEstimator: AutoToneEstimator = .init(),
         maximumConcurrency: Int = 4
     ) {
         self.metadataReader = metadataReader
         self.analyzer = analyzer
-        self.toneMeasurer = toneMeasurer
         self.grouper = grouper
-        self.toneEstimator = toneEstimator
         self.maximumConcurrency = max(1, maximumConcurrency)
     }
 
@@ -54,7 +50,7 @@ public struct LibraryPipeline: Sendable {
         bookmark: @escaping @Sendable (URL) -> Data? = { _ in nil },
         progress: @escaping ProgressHandler = { _ in }
     ) async throws -> Result {
-        let (reader, analyzer, measurer, estimator) = (metadataReader, self.analyzer, toneMeasurer, toneEstimator)
+        let (reader, analyzer) = (metadataReader, self.analyzer)
 
         // 1. メタデータ（読めなかったファイルは failures へ）
         let read = try await files.concurrentMap(maximumConcurrency, stage: .readingMetadata, progress: progress) { url in
@@ -62,21 +58,15 @@ public struct LibraryPipeline: Sendable {
         }
         let assets = read.compactMap { $0.1.success }
 
-        // 2. 画像解析 / 3. 自動補正の推定（失敗しても写真自体はカタログに残す）
+        // 2. 画像解析（失敗しても写真自体はカタログに残す）
         let analyses = successes(
             try await assets.concurrentMap(maximumConcurrency, stage: .analyzing, progress: progress) {
                 try await analyzer.analyze($0)
             },
             keyedBy: \.id
         )
-        let recipes = successes(
-            try await assets.concurrentMap(maximumConcurrency, stage: .estimatingTone, progress: progress) {
-                estimator.estimate(from: try await measurer.luminanceHistogram(for: $0))
-            },
-            keyedBy: \.id
-        )
 
-        // 4. グルーピング
+        // 3. グルーピング
         progress(.init(stage: .grouping, completed: 0, total: 1))
         let scenes = grouper.group(assets, analyses: analyses)
         progress(.init(stage: .grouping, completed: 1, total: 1))
@@ -85,7 +75,6 @@ public struct LibraryPipeline: Sendable {
             catalog: Catalog(
                 assets: Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) }),
                 analyses: analyses,
-                autoRecipes: recipes,
                 scenes: scenes
             ),
             failures: failures(read, keyedBy: { $0 }).mapValues { String(describing: $0) }

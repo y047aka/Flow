@@ -40,7 +40,7 @@ public struct Catalog: Codable, Sendable {
     public let version: Int
     public let assets: [PhotoAsset.ID: PhotoAsset]
     public let analyses: [PhotoAsset.ID: ImageAnalysis]
-    /// 写真ごとの自動推定レシピ（プリセット適用前）。
+    /// 写真ごとの自動推定レシピ（プリセット適用前）。取り込み後に裏で計算され、未計算の写真は含まれない。
     public let autoRecipes: [PhotoAsset.ID: DevelopRecipe]
     public let scenes: [PhotoScene]
     public let presetID: DevelopPreset.ID
@@ -77,7 +77,7 @@ public struct Catalog: Codable, Sendable {
         DevelopPreset.builtIn.first { $0.id == presetID } ?? .neutral
     }
 
-    /// 自動レシピに現在のプリセットを重ねた、最終的な現像レシピ。
+    /// 自動レシピに現在のプリセットを重ねた、最終的な現像レシピ。自動補正が未計算なら撮って出しに重ねる。
     public func recipe(for assetID: PhotoAsset.ID) -> DevelopRecipe {
         preset.apply(to: autoRecipes[assetID] ?? DevelopRecipe())
     }
@@ -97,12 +97,19 @@ public struct Catalog: Codable, Sendable {
         copy(sourceFolderBookmark: .some(sourceFolderBookmark))
     }
 
+    /// 自動補正レシピを追加したカタログ。対象の写真がこのカタログに無ければ何もしない。
+    public func with(autoRecipe: DevelopRecipe, for assetID: PhotoAsset.ID) -> Catalog {
+        guard assets[assetID] != nil else { return self }
+        return copy(autoRecipes: autoRecipes.merging([assetID: autoRecipe]) { _, new in new })
+    }
+
     /// 解析をやり直さずに、別の設定でグルーピングし直したカタログ。数百枚なら数ミリ秒で終わる。
     public func regrouped(with settings: GroupingSettings) -> Catalog {
         copy(scenes: settings.grouper.group(Array(assets.values), analyses: analyses), groupingSettings: settings)
     }
 
     private func copy(
+        autoRecipes: [PhotoAsset.ID: DevelopRecipe]? = nil,
         scenes: [PhotoScene]? = nil,
         presetID: DevelopPreset.ID? = nil,
         sourceFolderBookmark: Data?? = nil,
@@ -111,7 +118,7 @@ public struct Catalog: Codable, Sendable {
         Catalog(
             assets: assets,
             analyses: analyses,
-            autoRecipes: autoRecipes,
+            autoRecipes: autoRecipes ?? self.autoRecipes,
             scenes: scenes ?? self.scenes,
             presetID: presetID ?? self.presetID,
             sourceFolderBookmark: sourceFolderBookmark ?? self.sourceFolderBookmark,

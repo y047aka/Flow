@@ -13,11 +13,26 @@ final class AppModel {
     var errorMessage: String?
     var exportOptions = ExportOptions()
 
-    let developer = CoreImageRAWDeveloper()
+    /// 開いている写真。自動補正を最優先で計算する。
+    var focusedAssetID: PhotoAsset.ID? {
+        didSet {
+            if let id = focusedAssetID, id != oldValue { _ = autoToneTask(for: id) }
+        }
+    }
+
+    let developer: CoreImageRAWDeveloper
     let thumbnails = ThumbnailProvider()
 
     @ObservationIgnored private var accessedFolders: [URL] = []
     private let store: CatalogStore
+    private let autoTone: AutoToneService
+    /// 自動補正を裏で順に計算するワーカー。
+    @ObservationIgnored private var autoToneWorkers: [Task<Void, Never>] = []
+    /// 計算中の写真ごとのタスク。同じ写真を二重に計算しないため、また完了を待てるようにするため。
+    @ObservationIgnored private var autoToneTasks: [PhotoAsset.ID: Task<Void, Never>] = [:]
+    /// 保存していない自動補正の件数。カタログ全体を書き直すので、毎回ではなくまとめて保存する。
+    @ObservationIgnored private var unsavedAutoToneCount = 0
+    private static let autoToneSaveInterval = 20
 
     struct Activity {
         var title: String
@@ -29,6 +44,10 @@ final class AppModel {
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         store = CatalogStore(fileURL: support.appendingPathComponent("Flow/catalog.json"))
+        // init 内では全プロパティの初期化前に self.developer を読めないので、ローカル変数経由で渡す。
+        let developer = CoreImageRAWDeveloper()
+        self.developer = developer
+        autoTone = .apple(developer: developer)
         do {
             catalog = try store.load()
             if let bookmark = catalog?.sourceFolderBookmark { restoreAccess(bookmark) }
@@ -36,6 +55,8 @@ final class AppModel {
         } catch {
             errorMessage = "カタログを読み込めませんでした: \(error.localizedDescription)"
         }
+        // 前回計算しきれなかった自動補正の続き
+        startAutoTone()
     }
 
     var isBusy: Bool { activity != nil }
@@ -49,8 +70,12 @@ final class AppModel {
     func importFolder(_ folder: URL) async {
         guard !isBusy else { return }
         startAccessing(folder)
+        stopAutoTone()
         activity = Activity(title: "ファイルを検索中", completed: 0, total: 0)
-        defer { activity = nil }
+        defer {
+            activity = nil
+            startAutoTone()
+        }
 
         do {
             let files = try RawFileScanner().scan(folder)
@@ -58,7 +83,7 @@ final class AppModel {
                 errorMessage = "フォルダに RAW ファイルが見つかりませんでした。"
                 return
             }
-            let pipeline = LibraryPipeline.apple(developer: developer)
+            let pipeline = LibraryPipeline.apple()
             let result = try await pipeline.run(files: files, progress: { update in
                 Task { @MainActor in
                     self.activity = Activity(title: update.stage.localizedTitle, completed: update.completed, total: update.total)
@@ -111,12 +136,83 @@ final class AppModel {
         save()
     }
 
+    // MARK: - 自動補正（裏で計算）
+
+    /// 自動補正の計算が残っているときの進捗。すべて済んでいれば nil。
+    var autoToneProgress: (completed: Int, total: Int)? {
+        guard let progress = catalog?.autoToneProgress, progress.completed < progress.total else { return nil }
+        return progress
+    }
+
+    func isAutoTonePending(_ id: PhotoAsset.ID) -> Bool {
+        catalog.map { $0.assets[id] != nil && $0.autoRecipes[id] == nil } ?? false
+    }
+
+    /// 未計算の写真の自動補正を、優先順（開いている写真 → ベストショット → 残り）に裏で計算し始める。
+    func startAutoTone() {
+        stopAutoTone()
+        guard catalog?.autoTonePriority().isEmpty == false else { return }
+        autoToneWorkers = (0..<AutoToneService.backgroundConcurrency).map { _ in
+            Task(priority: .utility) { await self.runAutoToneWorker() }
+        }
+    }
+
+    /// 裏の計算を止める（計算中の 1 枚は最後まで計算して結果を残す）。
+    func stopAutoTone() {
+        autoToneWorkers.forEach { $0.cancel() }
+        autoToneWorkers = []
+        flushAutoTone()
+    }
+
+    /// 写真の自動補正が済むまで待つ（未計算なら今すぐ計算する）。
+    func ensureAutoTone(for id: PhotoAsset.ID) async {
+        await autoToneTask(for: id)?.value
+    }
+
+    /// 1 枚ずつ、その時点で最も優先度の高い未計算の写真を計算する。
+    /// 毎回優先順を求め直すので、途中で開いた写真やグループの組み直しがすぐに反映される。
+    private func runAutoToneWorker() async {
+        while !Task.isCancelled, let id = nextAutoToneCandidate() {
+            await ensureAutoTone(for: id)
+        }
+        if !Task.isCancelled { flushAutoTone() }
+    }
+
+    private func nextAutoToneCandidate() -> PhotoAsset.ID? {
+        catalog?.autoTonePriority(focusedOn: focusedAssetID).first { autoToneTasks[$0] == nil }
+    }
+
+    /// 写真の自動補正を計算するタスク。計算中ならそのタスク、計算済み・対象外なら nil。
+    private func autoToneTask(for id: PhotoAsset.ID) -> Task<Void, Never>? {
+        if let running = autoToneTasks[id] { return running }
+        guard let asset = catalog?.assets[id], catalog?.autoRecipes[id] == nil else { return nil }
+        let service = autoTone
+        let task = Task {
+            // 失敗した写真（OS が未対応の RAW など）は撮って出しを記録し、計算を繰り返さない。
+            let recipe = (try? await service.recipe(for: asset)) ?? DevelopRecipe()
+            self.finishAutoTone(recipe, for: id)
+        }
+        autoToneTasks[id] = task
+        return task
+    }
+
+    private func finishAutoTone(_ recipe: DevelopRecipe, for id: PhotoAsset.ID) {
+        autoToneTasks[id] = nil
+        // 計算中に別のフォルダを取り込んだ場合、新しいカタログには無い写真なので無視される。
+        catalog = catalog?.with(autoRecipe: recipe, for: id)
+        unsavedAutoToneCount += 1
+        if unsavedAutoToneCount >= Self.autoToneSaveInterval { flushAutoTone() }
+    }
+
+    private func flushAutoTone() {
+        if unsavedAutoToneCount > 0 { save() }
+    }
+
     // MARK: - 書き出し
 
-    /// 書き出し 1 件分の内容（何を・どのレシピで・どこへ）。
+    /// 書き出し 1 件分の内容（何を・どこへ）。レシピは自動補正を待ってから決める。
     struct ExportJob {
         let asset: PhotoAsset
-        let recipe: DevelopRecipe
         let destination: URL
     }
 
@@ -125,7 +221,6 @@ final class AppModel {
         catalog.bestAssets.map { asset in
             ExportJob(
                 asset: asset,
-                recipe: catalog.recipe(for: asset.id),
                 destination: folder
                     .appendingPathComponent(asset.fileURL.deletingPathExtension().lastPathComponent)
                     .appendingPathExtension(options.format.fileExtension)
@@ -137,15 +232,23 @@ final class AppModel {
     func exportBestShots(to folder: URL) async {
         guard let catalog, !isBusy else { return }
         startAccessing(folder)
+        // フル解像度の現像はメモリを大きく使うので、裏の自動補正は止めておく。
+        stopAutoTone()
         let options = exportOptions
         let jobs = Self.exportJobs(for: catalog, to: folder, options: options)
         activity = Activity(title: "書き出し中", completed: 0, total: jobs.count)
-        defer { activity = nil }
+        defer {
+            activity = nil
+            startAutoTone()
+        }
 
         // ファイル書き込みという副作用を、フル解像度の現像がメモリを大きく使うので 1 枚ずつ順に実行する。
         for (index, job) in jobs.enumerated() where !Task.isCancelled {
+            // 自動補正が未計算なら、その場で計算してから書き出す。
+            await ensureAutoTone(for: job.asset.id)
+            let recipe = (self.catalog ?? catalog).recipe(for: job.asset.id)
             do {
-                try await developer.export(job.asset, recipe: job.recipe, options: options, to: job.destination)
+                try await developer.export(job.asset, recipe: recipe, options: options, to: job.destination)
             } catch {
                 failures[job.asset.fileURL] = error.localizedDescription
             }
@@ -157,6 +260,7 @@ final class AppModel {
 
     private func save() {
         guard let catalog else { return }
+        unsavedAutoToneCount = 0
         do { try store.save(catalog) } catch { errorMessage = "カタログを保存できませんでした: \(error.localizedDescription)" }
     }
 
@@ -185,7 +289,6 @@ extension LibraryPipeline.Stage {
         switch self {
         case .readingMetadata: "撮影情報を読み込み中"
         case .analyzing: "写真を解析中"
-        case .estimatingTone: "自動補正を計算中"
         case .grouping: "グループ分け中"
         }
     }

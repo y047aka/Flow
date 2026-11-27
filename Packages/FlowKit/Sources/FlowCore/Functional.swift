@@ -21,6 +21,15 @@ extension Sequence {
     }
 }
 
+extension Sequence where Element: Hashable {
+    /// 最初に現れた順を保ったまま重複を除く。
+    func uniqued() -> [Element] {
+        reduce(into: (seen: Set<Element>(), result: [Element]())) { acc, element in
+            if acc.seen.insert(element).inserted { acc.result.append(element) }
+        }.result
+    }
+}
+
 extension Sequence where Element: AdditiveArithmetic {
     func sum() -> Element { reduce(.zero, +) }
 
