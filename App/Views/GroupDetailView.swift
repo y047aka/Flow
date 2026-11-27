@@ -102,12 +102,13 @@ private struct MetadataBar: View {
 
     private var exposureSummary: String {
         let m = asset.metadata
-        var parts: [String] = []
-        if let model = m.cameraModel { parts.append(model) }
-        if let f = m.focalLength { parts.append("\(Int(f))mm") }
-        if let n = m.fNumber { parts.append("f/\(n.formatted(.number.precision(.fractionLength(0...1))))") }
-        if let t = m.exposureTime { parts.append(t >= 1 ? "\(t.formatted())s" : "1/\(Int((1 / t).rounded()))s") }
-        if let iso = m.iso { parts.append("ISO \(iso)") }
-        return parts.joined(separator: "  ")
+        let parts: [String?] = [
+            m.cameraModel,
+            m.focalLength.map { "\(Int($0))mm" },
+            m.fNumber.map { "f/\($0.formatted(.number.precision(.fractionLength(0...1))))" },
+            m.exposureTime.map { $0 >= 1 ? "\($0.formatted())s" : "1/\(Int((1 / $0).rounded()))s" },
+            m.iso.map { "ISO \($0)" },
+        ]
+        return parts.compactMap { $0 }.joined(separator: "  ")
     }
 }

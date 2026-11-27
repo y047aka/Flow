@@ -4,12 +4,12 @@ import Foundation
 public struct PhotoAsset: Identifiable, Codable, Hashable, Sendable {
     public typealias ID = UUID
 
-    public var id: ID
+    public let id: ID
     /// 取り込み元ファイルの URL（セッション中に有効な URL）。
-    public var fileURL: URL
+    public let fileURL: URL
     /// 次回起動時にファイルへ再アクセスするための（セキュリティスコープ付き）ブックマーク。
-    public var bookmarkData: Data?
-    public var metadata: CaptureMetadata
+    public let bookmarkData: Data?
+    public let metadata: CaptureMetadata
 
     public init(id: ID = UUID(), fileURL: URL, bookmarkData: Data? = nil, metadata: CaptureMetadata) {
         self.id = id
@@ -26,17 +26,17 @@ public struct PhotoAsset: Identifiable, Codable, Hashable, Sendable {
 
 /// EXIF などから読み取った撮影情報。
 public struct CaptureMetadata: Codable, Hashable, Sendable {
-    public var captureDate: Date?
-    public var cameraMake: String?
-    public var cameraModel: String?
-    public var lensModel: String?
-    public var focalLength: Double?
-    public var fNumber: Double?
-    public var exposureTime: Double?
-    public var iso: Int?
-    public var pixelWidth: Int?
-    public var pixelHeight: Int?
-    public var location: GeoCoordinate?
+    public let captureDate: Date?
+    public let cameraMake: String?
+    public let cameraModel: String?
+    public let lensModel: String?
+    public let focalLength: Double?
+    public let fNumber: Double?
+    public let exposureTime: Double?
+    public let iso: Int?
+    public let pixelWidth: Int?
+    public let pixelHeight: Int?
+    public let location: GeoCoordinate?
 
     public init(
         captureDate: Date? = nil,
@@ -66,8 +66,8 @@ public struct CaptureMetadata: Codable, Hashable, Sendable {
 }
 
 public struct GeoCoordinate: Codable, Hashable, Sendable {
-    public var latitude: Double
-    public var longitude: Double
+    public let latitude: Double
+    public let longitude: Double
 
     public init(latitude: Double, longitude: Double) {
         self.latitude = latitude

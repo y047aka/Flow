@@ -3,7 +3,7 @@ import Foundation
 /// カタログを JSON ファイルとして保存・読み込みする。
 /// 数万枚規模になったら SQLite（GRDB など）への置き換えを検討する。
 public struct CatalogStore: Sendable {
-    public var fileURL: URL
+    public let fileURL: URL
 
     public init(fileURL: URL) {
         self.fileURL = fileURL

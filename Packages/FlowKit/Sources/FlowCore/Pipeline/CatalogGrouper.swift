@@ -3,9 +3,9 @@ import Foundation
 /// 解析済みの写真からシーン → 類似グループ → ベストショットを組み立てる。
 /// 解析をやり直さずに閾値だけ変えて再グルーピングできるよう、パイプラインから独立させている。
 public struct CatalogGrouper: Sendable {
-    public var segmenter: SceneSegmenter
-    public var clusterer: SimilarityClusterer
-    public var selector: BestShotSelector
+    public let segmenter: SceneSegmenter
+    public let clusterer: SimilarityClusterer
+    public let selector: BestShotSelector
 
     public init(
         segmenter: SceneSegmenter = .init(),
@@ -26,9 +26,5 @@ public struct CatalogGrouper: Sendable {
             let dates = sceneAssets.compactMap(\.captureDate)
             return PhotoScene(startDate: dates.min(), endDate: dates.max(), groups: groups)
         }
-    }
-
-    public func regroup(_ catalog: inout Catalog) {
-        catalog.scenes = group(Array(catalog.assets.values), analyses: catalog.analyses)
     }
 }

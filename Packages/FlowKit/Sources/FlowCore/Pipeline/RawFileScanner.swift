@@ -8,8 +8,8 @@ public struct RawFileScanner: Sendable {
         "mef", "mos", "mrw", "nef", "nrw", "orf", "pef", "raf", "raw", "rw2", "rwl", "sr2", "srf", "srw", "x3f",
     ]
 
-    public var extensions: Set<String>
-    public var recursive: Bool
+    public let extensions: Set<String>
+    public let recursive: Bool
 
     public init(extensions: Set<String> = Self.defaultExtensions, recursive: Bool = true) {
         self.extensions = extensions
@@ -17,17 +17,19 @@ public struct RawFileScanner: Sendable {
     }
 
     public func scan(_ directory: URL) throws -> [URL] {
-        let fm = FileManager.default
-        var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]
-        if !recursive { options.insert(.skipsSubdirectoryDescendants) }
-        guard let enumerator = fm.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: options) else {
-            return []
-        }
-        var result: [URL] = []
-        for case let url as URL in enumerator where extensions.contains(url.pathExtension.lowercased()) {
-            let isFile = (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
-            if isFile { result.append(url) }
-        }
-        return result.sorted { $0.path < $1.path }
+        let options: FileManager.DirectoryEnumerationOptions = recursive
+            ? [.skipsHiddenFiles]
+            : [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        let enumerator = FileManager.default.enumerator(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: options
+        )
+        return (enumerator?.compactMap { $0 as? URL } ?? [])
+            .filter(isRawFile)
+            .sorted { $0.path < $1.path }
+    }
+
+    func isRawFile(_ url: URL) -> Bool {
+        extensions.contains(url.pathExtension.lowercased())
+            && (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
     }
 }

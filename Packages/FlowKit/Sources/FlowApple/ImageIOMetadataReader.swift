@@ -34,21 +34,19 @@ public struct ImageIOMetadataReader: MetadataReading {
     static func captureDate(exif: [CFString: Any], tiff: [CFString: Any]) -> Date? {
         guard let string = exif[kCGImagePropertyExifDateTimeOriginal] as? String
                 ?? tiff[kCGImagePropertyTIFFDateTime] as? String else { return nil }
+        // EXIF 2.31 のタイムゾーン（例: "+09:00"）があれば使い、無ければ端末のタイムゾーンとみなす。
+        let timeZone = (exif[kCGImagePropertyExifOffsetTimeOriginal] as? String).flatMap(Self.timeZone(fromOffset:)) ?? .current
+        // 連写の順序を保つためにサブ秒も加える。
+        let subsecond = (exif[kCGImagePropertyExifSubsecTimeOriginal] as? String).flatMap { Double("0." + $0) } ?? 0
+        return exifDateFormatter(timeZone: timeZone).date(from: string)?.addingTimeInterval(subsecond)
+    }
+
+    static func exifDateFormatter(timeZone: TimeZone) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        // EXIF 2.31 のタイムゾーン（例: "+09:00"）があれば使い、無ければ端末のタイムゾーンとみなす。
-        if let offset = exif[kCGImagePropertyExifOffsetTimeOriginal] as? String, let tz = Self.timeZone(fromOffset: offset) {
-            formatter.timeZone = tz
-        } else {
-            formatter.timeZone = .current
-        }
-        guard var date = formatter.date(from: string) else { return nil }
-        // 連写の順序を保つためにサブ秒も加える。
-        if let subsec = exif[kCGImagePropertyExifSubsecTimeOriginal] as? String, let value = Double("0." + subsec) {
-            date.addTimeInterval(value)
-        }
-        return date
+        formatter.timeZone = timeZone
+        return formatter
     }
 
     static func timeZone(fromOffset offset: String) -> TimeZone? {
@@ -59,11 +57,16 @@ public struct ImageIOMetadataReader: MetadataReading {
     }
 
     static func coordinate(gps: [CFString: Any]) -> GeoCoordinate? {
-        guard var lat = gps[kCGImagePropertyGPSLatitude] as? Double,
-              var lon = gps[kCGImagePropertyGPSLongitude] as? Double else { return nil }
-        if (gps[kCGImagePropertyGPSLatitudeRef] as? String) == "S" { lat = -lat }
-        if (gps[kCGImagePropertyGPSLongitudeRef] as? String) == "W" { lon = -lon }
-        return GeoCoordinate(latitude: lat, longitude: lon)
+        guard let lat = gps[kCGImagePropertyGPSLatitude] as? Double,
+              let lon = gps[kCGImagePropertyGPSLongitude] as? Double else { return nil }
+        // 南緯・西経は負の値にする。
+        func sign(_ key: CFString, negativeWhen ref: String) -> Double {
+            (gps[key] as? String) == ref ? -1 : 1
+        }
+        return GeoCoordinate(
+            latitude: lat * sign(kCGImagePropertyGPSLatitudeRef, negativeWhen: "S"),
+            longitude: lon * sign(kCGImagePropertyGPSLongitudeRef, negativeWhen: "W")
+        )
     }
 }
 #endif

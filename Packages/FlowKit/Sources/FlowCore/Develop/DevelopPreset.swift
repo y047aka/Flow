@@ -2,15 +2,15 @@ import Foundation
 
 /// ユーザーが選べる唯一の「現像パラメータ」。自動推定レシピの上に重ねる差分として表現する。
 public struct DevelopPreset: Identifiable, Codable, Hashable, Sendable {
-    public var id: String
-    public var name: String
+    public let id: String
+    public let name: String
     /// 自動補正（露出・ハイライト・シャドウ）をどの程度効かせるか。0 で撮って出し、1 で推定値どおり。
-    public var autoToneStrength: Double
-    public var exposureOffset: Double
-    public var contrast: Double
-    public var saturation: Double
-    public var vibrance: Double
-    public var monochrome: Bool
+    public let autoToneStrength: Double
+    public let exposureOffset: Double
+    public let contrast: Double
+    public let saturation: Double
+    public let vibrance: Double
+    public let monochrome: Bool
 
     public init(
         id: String,
@@ -32,16 +32,21 @@ public struct DevelopPreset: Identifiable, Codable, Hashable, Sendable {
         self.monochrome = monochrome
     }
 
+    /// 自動推定レシピにこのプリセットを重ねたレシピ。
     public func apply(to auto: DevelopRecipe) -> DevelopRecipe {
-        var r = auto
-        r.exposure = auto.exposure * autoToneStrength + exposureOffset
-        r.highlights = auto.highlights * autoToneStrength
-        r.shadows = auto.shadows * autoToneStrength
-        r.contrast += contrast
-        r.saturation += saturation
-        r.vibrance += vibrance
-        r.monochrome = r.monochrome || monochrome
-        return r.clamped()
+        DevelopRecipe(
+            exposure: auto.exposure * autoToneStrength + exposureOffset,
+            whiteBalance: auto.whiteBalance,
+            highlights: auto.highlights * autoToneStrength,
+            shadows: auto.shadows * autoToneStrength,
+            contrast: auto.contrast + contrast,
+            saturation: auto.saturation + saturation,
+            vibrance: auto.vibrance + vibrance,
+            noiseReduction: auto.noiseReduction,
+            sharpness: auto.sharpness,
+            lensCorrection: auto.lensCorrection,
+            monochrome: auto.monochrome || monochrome
+        ).clamped()
     }
 }
 

@@ -40,12 +40,12 @@ public struct ExportOptions: Codable, Hashable, Sendable {
         case sRGB, displayP3
     }
 
-    public var format: Format
-    public var colorSpace: ColorSpace
+    public let format: Format
+    public let colorSpace: ColorSpace
     /// 非可逆圧縮の品質 0...1。
-    public var quality: Double
+    public let quality: Double
     /// 長辺の最大ピクセル数。nil なら原寸。
-    public var maximumPixelSize: Int?
+    public let maximumPixelSize: Int?
 
     public init(format: Format = .heic, colorSpace: ColorSpace = .displayP3, quality: Double = 0.9, maximumPixelSize: Int? = nil) {
         self.format = format

@@ -31,18 +31,13 @@ final class AutoToneEstimatorTests: XCTestCase {
 
 final class DevelopPresetTests: XCTestCase {
     func testAsShotIgnoresAutoTone() {
-        var auto = DevelopRecipe()
-        auto.exposure = 0.8
-        auto.highlights = 0.4
-        let result = DevelopPreset.asShot.apply(to: auto)
+        let result = DevelopPreset.asShot.apply(to: DevelopRecipe(exposure: 0.8, highlights: 0.4))
         XCTAssertEqual(result.exposure, 0)
         XCTAssertEqual(result.highlights, 0)
     }
 
     func testPresetAddsAndClamps() {
-        var auto = DevelopRecipe()
-        auto.vibrance = 0.95
-        let result = DevelopPreset.crisp.apply(to: auto)
+        let result = DevelopPreset.crisp.apply(to: DevelopRecipe(vibrance: 0.95))
         XCTAssertEqual(result.vibrance, 1)
         XCTAssertEqual(result.contrast, 0.15, accuracy: 1e-9)
     }
@@ -52,18 +47,39 @@ final class DevelopPresetTests: XCTestCase {
     }
 }
 
+final class CatalogDerivationTests: XCTestCase {
+    func testWithReturnsNewCatalogAndKeepsOriginal() {
+        let original = Catalog(presetID: DevelopPreset.neutral.id)
+        let changed = original.with(presetID: DevelopPreset.crisp.id).with(sourceFolderBookmark: Data([1]))
+        XCTAssertEqual(original.preset, .neutral)
+        XCTAssertNil(original.sourceFolderBookmark)
+        XCTAssertEqual(changed.preset, .crisp)
+        XCTAssertEqual(changed.sourceFolderBookmark, Data([1]))
+        XCTAssertNil(changed.with(sourceFolderBookmark: nil).sourceFolderBookmark)
+    }
+}
+
+final class FunctionalHelperTests: XCTestCase {
+    func testChunked() {
+        XCTAssertEqual([1, 2, 4, 5, 7].chunked { $1 - $0 == 1 }, [[1, 2], [4, 5], [7]])
+        XCTAssertEqual([Int]().chunked { _, _ in true }, [])
+    }
+
+    func testCumulativeSums() {
+        XCTAssertEqual([1, 2, 3].cumulativeSums(), [1, 3, 6])
+    }
+}
+
 final class CatalogTests: XCTestCase {
     func testRoundTripThroughStore() throws {
         let asset = makeAsset("a.cr3", at: 0)
-        var recipe = DevelopRecipe()
-        recipe.whiteBalance = .custom(temperature: 5200, tint: 4)
-        var catalog = Catalog(
+        let recipe = DevelopRecipe(whiteBalance: .custom(temperature: 5200, tint: 4))
+        let catalog = Catalog(
             assets: [asset.id: asset],
             analyses: [asset.id: ImageAnalysis(featureVector: vector(angle: 0), aestheticsScore: 0.3)],
             autoRecipes: [asset.id: recipe],
             presetID: DevelopPreset.soft.id
-        )
-        CatalogGrouper().regroup(&catalog)
+        ).regrouped(by: CatalogGrouper())
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("catalog.json")
         let store = CatalogStore(fileURL: url)

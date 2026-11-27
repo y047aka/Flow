@@ -64,9 +64,9 @@ final class AppModel {
                     self.activity = Activity(title: update.stage.localizedTitle, completed: update.completed, total: update.total)
                 }
             })
-            var catalog = result.catalog
-            catalog.presetID = self.catalog?.presetID ?? catalog.presetID
-            catalog.sourceFolderBookmark = try? folder.bookmarkData(options: Self.bookmarkCreationOptions)
+            let catalog = result.catalog
+                .with(presetID: self.catalog?.presetID ?? result.catalog.presetID)
+                .with(sourceFolderBookmark: try? folder.bookmarkData(options: Self.bookmarkCreationOptions))
             self.catalog = catalog
             failures = result.failures
             selectedSceneID = catalog.scenes.first?.id
@@ -81,30 +81,47 @@ final class AppModel {
     // MARK: - プリセット
 
     func setPreset(_ id: DevelopPreset.ID) {
-        catalog?.presetID = id
+        catalog = catalog?.with(presetID: id)
         save()
     }
 
     // MARK: - 書き出し
 
+    /// 書き出し 1 件分の内容（何を・どのレシピで・どこへ）。
+    struct ExportJob {
+        let asset: PhotoAsset
+        let recipe: DevelopRecipe
+        let destination: URL
+    }
+
+    /// 各グループのベストショットの書き出し内容を決める（副作用の無い純粋な関数）。
+    static func exportJobs(for catalog: Catalog, to folder: URL, options: ExportOptions) -> [ExportJob] {
+        catalog.bestAssets.map { asset in
+            ExportJob(
+                asset: asset,
+                recipe: catalog.recipe(for: asset.id),
+                destination: folder
+                    .appendingPathComponent(asset.fileURL.deletingPathExtension().lastPathComponent)
+                    .appendingPathExtension(options.format.fileExtension)
+            )
+        }
+    }
+
     /// 各グループのベストショットを書き出す。
     func exportBestShots(to folder: URL) async {
         guard let catalog, !isBusy else { return }
         startAccessing(folder)
-        let assets = catalog.bestAssets
-        activity = Activity(title: "書き出し中", completed: 0, total: assets.count)
+        let options = exportOptions
+        let jobs = Self.exportJobs(for: catalog, to: folder, options: options)
+        activity = Activity(title: "書き出し中", completed: 0, total: jobs.count)
         defer { activity = nil }
 
-        let options = exportOptions
-        for (index, asset) in assets.enumerated() {
-            if Task.isCancelled { break }
-            let name = asset.fileURL.deletingPathExtension().lastPathComponent
-            let destination = folder.appendingPathComponent(name).appendingPathExtension(options.format.fileExtension)
+        // ファイル書き込みという副作用を、フル解像度の現像がメモリを大きく使うので 1 枚ずつ順に実行する。
+        for (index, job) in jobs.enumerated() where !Task.isCancelled {
             do {
-                // フル解像度の現像はメモリを大きく使うので 1 枚ずつ行う。
-                try await developer.export(asset, recipe: catalog.recipe(for: asset.id), options: options, to: destination)
+                try await developer.export(job.asset, recipe: job.recipe, options: options, to: job.destination)
             } catch {
-                failures[asset.fileURL] = error.localizedDescription
+                failures[job.asset.fileURL] = error.localizedDescription
             }
             activity?.completed = index + 1
         }

@@ -22,23 +22,20 @@ struct GrayscaleBuffer {
         // 行末にパディングが入ることがあるので、行ごとに詰めてコピーする。
         let stride = context.bytesPerRow
         let base = data.bindMemory(to: UInt8.self, capacity: stride * h)
-        var pixels = [UInt8]()
-        pixels.reserveCapacity(w * h)
-        for y in 0..<h {
-            pixels.append(contentsOf: UnsafeBufferPointer(start: base + y * stride, count: w))
-        }
         self.width = w
         self.height = h
-        self.pixels = pixels
+        self.pixels = (0..<h).flatMap { y in UnsafeBufferPointer(start: base + y * stride, count: w) }
     }
 
     var histogram: LuminanceHistogram {
-        var bins = [Int](repeating: 0, count: 256)
-        for p in pixels { bins[Int(p)] += 1 }
-        return LuminanceHistogram(bins: bins)
+        LuminanceHistogram(bins: pixels.reduce(into: [Int](repeating: 0, count: 256)) { bins, p in bins[Int(p)] += 1 })
     }
 
     /// ラプラシアンの分散（ピント・ブレの指標）。大きいほどシャープ。
+    ///
+    /// 1 枚あたり数十万画素 × 数百枚を処理する最も重いループなので、性能を優先して手続き的に書いている。
+    /// （lazy な flatMap/map/reduce の連鎖にすると中間イテレータのオーバーヘッドで数倍遅くなりうる）
+    /// 外から見れば入力にだけ依存する純粋な計算プロパティ。
     var laplacianVariance: Double {
         guard width > 2, height > 2 else { return 0 }
         var sum = 0.0, sumSq = 0.0

@@ -66,6 +66,19 @@ Flow/
 - **FlowApple** がそのプロトコルを ImageIO / Vision / Core Image で実装する。
 - Windows 版を作るときは FlowCore をそのまま使い、プロトコルを LibRaw・ONNX Runtime などで実装し直す。
 
+### コーディング方針（関数型のコア＋命令型の外殻）
+
+- **値は不変**：モデル（`PhotoAsset`、`Catalog`、`DevelopRecipe` など）のプロパティは `let`。
+  変更は `catalog.with(presetID:)` や `catalog.regrouped(by:)` のように、新しい値を返す関数で表す。
+- **ロジックは純粋関数**：グループ分けやスコア計算は `map` / `filter` / `reduce` と、
+  `Functional.swift` の汎用ヘルパー（`chunked(by:)`、`grouped(while:)`、`cumulativeSums()` など）で書く。
+- **現像は関数の合成**：レシピから `CIImage -> CIImage` の調整関数の列を作り、`reduce` で順に適用する。
+- **手続き的に書く箇所（理由付き）**：
+  - UI 状態とファイル入出力（`AppModel`）：副作用の実行そのもの。書き出し内容の決定（`exportJobs`）は純粋関数に分けてある。
+  - `CIRAWFilter` の設定：API がプロパティを書き換える形のため、1 つの関数に閉じ込めた。
+  - `concurrentMap` の内部：同時実行数を制限するスライディングウィンドウは、TaskGroup の手続き的な操作でしか書けない。
+  - `GrayscaleBuffer.laplacianVariance`：画素ごとの最も重いループなので性能を優先した。
+
 ## 処理の流れ
 
 ```

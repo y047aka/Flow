@@ -6,7 +6,7 @@ import ImageIO
 /// RAW に埋め込まれた JPEG プレビューを取り出す。RAW デコードより桁違いに速いので、
 /// サムネイル表示と画像解析はこちらを使う。
 public struct PreviewImageLoader: Sendable {
-    public var maximumPixelSize: Int
+    public let maximumPixelSize: Int
 
     public init(maximumPixelSize: Int = 1024) {
         self.maximumPixelSize = maximumPixelSize

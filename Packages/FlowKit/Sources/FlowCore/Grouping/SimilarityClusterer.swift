@@ -9,11 +9,11 @@ public struct SimilarityClusterer: Sendable {
     public struct Configuration: Sendable {
         /// 特徴ベクトルの距離がこれ以下なら「似ている」とみなす。
         /// Vision の FeaturePrint（revision 2, 正規化済み 768 次元）を想定した初期値。実データで調整すること。
-        public var maximumDistance: Float
+        public let maximumDistance: Float
         /// グループ内の直前の写真とこれ以上撮影間隔が空いたら別グループ。
-        public var maximumTimeGap: TimeInterval
+        public let maximumTimeGap: TimeInterval
         /// 比較対象にするグループ内の直近メンバー数。
-        public var comparisonWindow: Int
+        public let comparisonWindow: Int
 
         public init(maximumDistance: Float = 0.55, maximumTimeGap: TimeInterval = 60, comparisonWindow: Int = 3) {
             self.maximumDistance = maximumDistance
@@ -22,7 +22,7 @@ public struct SimilarityClusterer: Sendable {
         }
     }
 
-    public var configuration: Configuration
+    public let configuration: Configuration
 
     public init(configuration: Configuration = .init()) {
         self.configuration = configuration
@@ -30,28 +30,25 @@ public struct SimilarityClusterer: Sendable {
 
     /// - Parameter assets: 撮影順に並んだ 1 シーン分の写真。
     public func cluster(_ assets: [PhotoAsset], analyses: [PhotoAsset.ID: ImageAnalysis]) -> [[PhotoAsset]] {
-        var groups: [[PhotoAsset]] = []
-        for asset in assets {
-            if let last = groups.last, belongs(asset, to: last, analyses: analyses) {
-                groups[groups.count - 1].append(asset)
-            } else {
-                groups.append([asset])
-            }
-        }
-        return groups
+        assets.grouped { group, asset in belongs(asset, to: group, analyses: analyses) }
     }
 
     func belongs(_ asset: PhotoAsset, to group: [PhotoAsset], analyses: [PhotoAsset.ID: ImageAnalysis]) -> Bool {
-        guard let previous = group.last else { return false }
-        if let d0 = previous.captureDate, let d1 = asset.captureDate,
-           d1.timeIntervalSince(d0) > configuration.maximumTimeGap {
-            return false
-        }
-        guard let vector = analyses[asset.id]?.featureVector else { return false }
-        return group.suffix(configuration.comparisonWindow).contains { member in
-            guard let other = analyses[member.id]?.featureVector,
-                  other.values.count == vector.values.count else { return false }
-            return vector.distance(to: other) <= configuration.maximumDistance
-        }
+        guard let previous = group.last,
+              let vector = analyses[asset.id]?.featureVector,
+              isWithinTimeGap(previous, asset) else { return false }
+        return group
+            .suffix(configuration.comparisonWindow)
+            .compactMap { analyses[$0.id]?.featureVector }
+            .contains { isSimilar(vector, $0) }
+    }
+
+    func isWithinTimeGap(_ a: PhotoAsset, _ b: PhotoAsset) -> Bool {
+        guard let da = a.captureDate, let db = b.captureDate else { return true }
+        return db.timeIntervalSince(da) <= configuration.maximumTimeGap
+    }
+
+    func isSimilar(_ a: FeatureVector, _ b: FeatureVector) -> Bool {
+        a.values.count == b.values.count && a.distance(to: b) <= configuration.maximumDistance
     }
 }
