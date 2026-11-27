@@ -7,7 +7,8 @@ import Observation
 @Observable
 final class AppModel {
     var catalog: Catalog?
-    var selectedSceneID: PhotoScene.ID?
+    /// 折り畳まれているシーン。既定はすべて開いた状態で、新しいシーンも開いた状態で現れる。
+    var collapsedSceneIDs: Set<PhotoScene.ID> = []
     var activity: Activity?
     var failures: [URL: String] = [:]
     var errorMessage: String?
@@ -52,7 +53,6 @@ final class AppModel {
             // 保存済みのシーンは古いロジックで作られている場合があるので、読み込み時に現在のロジックで組み直す（数ミリ秒）。
             catalog = try store.load().map { $0.regrouped(with: $0.grouping) }
             if let bookmark = catalog?.sourceFolderBookmark { restoreAccess(bookmark) }
-            selectedSceneID = catalog?.scenes.first?.id
         } catch {
             errorMessage = "カタログを読み込めませんでした: \(error.localizedDescription)"
         }
@@ -62,8 +62,24 @@ final class AppModel {
 
     var isBusy: Bool { activity != nil }
 
-    var selectedScene: PhotoScene? {
-        catalog?.scenes.first { $0.id == selectedSceneID }
+    // MARK: - シーンの開閉
+
+    func isExpanded(_ sceneID: PhotoScene.ID) -> Bool {
+        !collapsedSceneIDs.contains(sceneID)
+    }
+
+    func toggleScene(_ sceneID: PhotoScene.ID) {
+        collapsedSceneIDs.formSymmetricDifference([sceneID])
+    }
+
+    /// すべてのシーンが折り畳まれているか。
+    var areAllScenesCollapsed: Bool {
+        guard let scenes = catalog?.scenes, !scenes.isEmpty else { return false }
+        return scenes.allSatisfy { collapsedSceneIDs.contains($0.id) }
+    }
+
+    func setAllScenesExpanded(_ expanded: Bool) {
+        collapsedSceneIDs = expanded ? [] : Set(catalog?.scenes.map(\.id) ?? [])
     }
 
     // MARK: - 取り込み
@@ -96,7 +112,7 @@ final class AppModel {
                 .with(sourceFolderBookmark: try? folder.bookmarkData(options: Self.bookmarkCreationOptions))
             self.catalog = catalog
             failures = result.failures
-            selectedSceneID = catalog.scenes.first?.id
+            collapsedSceneIDs = []
             save()
         } catch is CancellationError {
             // ユーザーによるキャンセル
@@ -124,12 +140,8 @@ final class AppModel {
         guard let catalog else { return }
         let settings = transform(catalog.grouping)
         guard settings != catalog.grouping else { return }
-        // 選択中のシーンの先頭の写真を含むシーンを、組み直した後も選択し続ける。
-        let anchor = selectedScene?.assetIDs.first
-        let regrouped = catalog.regrouped(with: settings)
-        self.catalog = regrouped
-        selectedSceneID = anchor.flatMap { id in regrouped.scenes.first { $0.assetIDs.contains(id) }?.id }
-            ?? regrouped.scenes.first?.id
+        // シーンの ID は先頭の写真から決まるので、組み直しても開閉状態はそのまま保たれる。
+        self.catalog = catalog.regrouped(with: settings)
     }
 
     /// 現在のグルーピング設定を保存する（スライダー操作の終わりなどに呼ぶ）。

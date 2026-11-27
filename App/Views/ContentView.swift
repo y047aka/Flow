@@ -11,13 +11,10 @@ struct ContentView: View {
     enum FolderPurpose { case importPhotos, export }
 
     var body: some View {
-        NavigationSplitView {
-            SceneListView()
-                .navigationTitle("Flow")
-        } detail: {
-            NavigationStack {
-                if let scene = model.selectedScene {
-                    SceneGridView(scene: scene)
+        NavigationStack {
+            Group {
+                if let catalog = model.catalog {
+                    LibraryGridView(catalog: catalog)
                 } else {
                     ContentUnavailableView {
                         Label("写真を取り込む", systemImage: "camera.aperture")
@@ -29,8 +26,13 @@ struct ContentView: View {
                     }
                 }
             }
+            .navigationTitle("Flow")
+            .navigationDestination(for: SimilarGroup.self) { group in
+                GroupDetailView(group: group)
+                    .toolbar { toolbarContent(isLibrary: false) }
+            }
+            .toolbar { toolbarContent(isLibrary: true) }
         }
-        .toolbar { toolbarContent }
         .fileImporter(
             isPresented: $isPickingFolder,
             allowedContentTypes: [.folder]
@@ -59,8 +61,9 @@ struct ContentView: View {
         isPickingFolder = true
     }
 
+    /// 一覧と詳細の両方に出すツールバー。シーンの開閉ボタンは一覧（`isLibrary`）のときだけ出す。
     @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
+    private func toolbarContent(isLibrary: Bool) -> some ToolbarContent {
         ToolbarItem {
             if let progress = model.autoToneProgress {
                 HStack(spacing: 6) {
@@ -69,6 +72,20 @@ struct ContentView: View {
                         .font(.caption).monospacedDigit()
                 }
                 .help("自動補正を裏で計算しています。計算が済んでいない写真は撮って出しで表示されます。")
+            }
+        }
+        if isLibrary {
+            ToolbarItem {
+                Button {
+                    withAnimation(.snappy) { model.setAllScenesExpanded(model.areAllScenesCollapsed) }
+                } label: {
+                    if model.areAllScenesCollapsed {
+                        Label("すべて開く", systemImage: "rectangle.expand.vertical")
+                    } else {
+                        Label("すべて閉じる", systemImage: "rectangle.compress.vertical")
+                    }
+                }
+                .disabled(model.catalog?.scenes.isEmpty ?? true)
             }
         }
         ToolbarItem {
