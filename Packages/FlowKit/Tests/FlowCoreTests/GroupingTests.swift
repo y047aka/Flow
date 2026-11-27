@@ -6,14 +6,15 @@ final class SceneSegmenterTests: XCTestCase {
     let segmenter = SceneSegmenter(configuration: .init(timeZone: TimeZone(identifier: "UTC")!))
     let park = GeoCoordinate(latitude: 35.6715, longitude: 139.6950)
 
-    func testSplitsOnTimeGapWithoutLocation() {
+    func testWithoutLocationSplitsOnlyByShootingDay() {
+        // 位置情報が無ければ、撮影間隔が空いても同じ撮影日なら 1 シーン。朝 4 時を越えたら別シーン。
         let assets = [
             makeAsset("c.raw", at: 2000),
             makeAsset("a.raw", at: 0),
             makeAsset("b.raw", at: 30),
-            makeAsset("d.raw", at: 2010),
+            makeAsset("d.raw", at: 21000),
         ]
-        XCTAssertEqual(segmenter.segment(assets).map { $0.map(\.fileName) }, [["a.raw", "b.raw"], ["c.raw", "d.raw"]])
+        XCTAssertEqual(segmenter.segment(assets).map { $0.map(\.fileName) }, [["a.raw", "b.raw", "c.raw"], ["d.raw"]])
     }
 
     func testSplitsOnDistance() {
@@ -53,8 +54,6 @@ final class SceneSegmenterTests: XCTestCase {
         // 3:46 と 4:03 は別の撮影日
         let assets = [makeAsset("a.raw", at: 20000, location: park), makeAsset("b.raw", at: 21000, location: park)]
         XCTAssertEqual(segmenter.segment(assets).count, 2)
-        let noDaySplit = SceneSegmenter(configuration: .init(splitsByDay: false, timeZone: TimeZone(identifier: "UTC")!))
-        XCTAssertEqual(noDaySplit.segment(assets).count, 1)
     }
 
     func testUndatedAssetsGoLast() {

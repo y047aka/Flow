@@ -25,7 +25,7 @@ private struct FakeToneMeasurer: ToneMeasuring {
 
 final class LibraryPipelineTests: XCTestCase {
     func testEndToEnd() async throws {
-        let files = ["0_0.0", "1_0.1", "2_2.0", "3000_2.0", "broken_0"].map { URL(fileURLWithPath: "/card/\($0).raw") }
+        let files = ["0_0.0", "1_0.1", "2_2.0", "172800_2.0", "broken_0"].map { URL(fileURLWithPath: "/card/\($0).raw") }
         let pipeline = LibraryPipeline(
             metadataReader: FakeMetadataReader(),
             analyzer: FakeAnalyzer(),

@@ -15,7 +15,7 @@ public struct SimilarityClusterer: Sendable {
         /// 比較対象にするグループ内の直近メンバー数。
         public let comparisonWindow: Int
 
-        public init(maximumDistance: Float = 0.55, maximumTimeGap: TimeInterval = 60, comparisonWindow: Int = 3) {
+        public init(maximumDistance: Float = 0.45, maximumTimeGap: TimeInterval = 60, comparisonWindow: Int = 3) {
             self.maximumDistance = maximumDistance
             self.maximumTimeGap = maximumTimeGap
             self.comparisonWindow = comparisonWindow

@@ -90,20 +90,25 @@ final class AppModel {
 
     var groupingSettings: GroupingSettings { catalog?.grouping ?? .default }
 
-    /// 設定を変えてグルーピングし直す（解析はやり直さないので即時）。
-    /// スライダー操作中は `persist: false` で画面だけ更新し、操作の終わりに保存する。
-    func updateGrouping(_ settings: GroupingSettings, persist: Bool = true) {
-        guard let catalog, settings != catalog.grouping else {
-            if persist { save() }
-            return
-        }
+    /// 現在の設定を変換してグルーピングし直す（解析はやり直さないので即時）。保存はしない。
+    ///
+    /// 新しい設定は「呼び出し時点の最新の設定」から作る。UI 側が描画時点の古い設定を持っていても、
+    /// 他の項目を巻き戻してしまうことがない。
+    func updateGrouping(_ transform: (GroupingSettings) -> GroupingSettings) {
+        guard let catalog else { return }
+        let settings = transform(catalog.grouping)
+        guard settings != catalog.grouping else { return }
         // 選択中のシーンの先頭の写真を含むシーンを、組み直した後も選択し続ける。
         let anchor = selectedScene?.assetIDs.first
         let regrouped = catalog.regrouped(with: settings)
         self.catalog = regrouped
         selectedSceneID = anchor.flatMap { id in regrouped.scenes.first { $0.assetIDs.contains(id) }?.id }
             ?? regrouped.scenes.first?.id
-        if persist { save() }
+    }
+
+    /// 現在のグルーピング設定を保存する（スライダー操作の終わりなどに呼ぶ）。
+    func commitGrouping() {
+        save()
     }
 
     // MARK: - 書き出し

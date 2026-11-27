@@ -1,7 +1,7 @@
 import FlowCore
 import SwiftUI
 
-/// グループ分けの設定パネル。値を動かすと即座に組み直される。
+/// グループ分けの設定パネル。値を動かすと即座に組み直され、スライダーから手を離すと保存される。
 struct GroupingSettingsView: View {
     @Environment(AppModel.self) private var model
 
@@ -13,10 +13,10 @@ struct GroupingSettingsView: View {
                     value: settings.similarityThreshold,
                     range: GroupingSettings.similarityThresholdRange,
                     minimumLabel: "厳しい", maximumLabel: "ゆるい",
-                    valueText: settings.similarityThreshold.formatted(.number.precision(.fractionLength(2)))
-                ) { value, persist in
-                    model.updateGrouping(settings.with(similarityThreshold: value), persist: persist)
-                }
+                    valueText: settings.similarityThreshold.formatted(.number.precision(.fractionLength(2))),
+                    onChange: { value in model.updateGrouping { $0.with(similarityThreshold: value) } },
+                    onCommit: model.commitGrouping
+                )
             } header: {
                 Text("似たショットの判定")
             } footer: {
@@ -24,46 +24,30 @@ struct GroupingSettingsView: View {
             }
 
             Section {
-                Toggle("撮影日が変わったら区切る（朝 4 時切り替え）", isOn: Binding(
-                    get: { settings.splitsByDay },
-                    set: { model.updateGrouping(settings.with(splitsByDay: $0)) }
-                ))
-                LabeledContent("場所が離れたら区切る") {
-                    Text(distanceText(settings.sceneDistance)).monospacedDigit()
-                }
                 SettingSlider(
                     value: settings.sceneDistance,
                     range: GroupingSettings.sceneDistanceRange,
                     minimumLabel: "100 m", maximumLabel: "5 km",
-                    valueText: nil
-                ) { value, persist in
-                    model.updateGrouping(settings.with(sceneDistance: (value / 50).rounded() * 50), persist: persist)
-                }
-                LabeledContent("位置情報が無いときの撮影間隔") {
-                    Text(Duration.seconds(settings.sceneTimeGap).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated)))
-                        .monospacedDigit()
-                }
-                SettingSlider(
-                    value: settings.sceneTimeGap,
-                    range: GroupingSettings.sceneTimeGapRange,
-                    minimumLabel: "5 分", maximumLabel: "3 時間",
-                    valueText: nil
-                ) { value, persist in
-                    model.updateGrouping(settings.with(sceneTimeGap: (value / 300).rounded() * 300), persist: persist)
-                }
+                    valueText: distanceText(settings.sceneDistance),
+                    onChange: { value in model.updateGrouping { $0.with(sceneDistance: (value / 50).rounded() * 50) } },
+                    onCommit: model.commitGrouping
+                )
             } header: {
-                Text("シーンの区切り")
+                Text("シーンを区切る距離")
             } footer: {
-                Text("位置情報がある写真は撮影場所で、無い写真は撮影間隔で区切ります。")
+                Text("撮影日（朝 4 時切り替え）が変わるか、撮影場所がこの距離以上離れたら別のシーンにします。位置情報の無い写真は撮影日だけで区切ります。")
             }
 
             Section {
-                Button("初期値に戻す") { model.updateGrouping(.default) }
-                    .disabled(settings == .default)
+                Button("初期値に戻す") {
+                    model.updateGrouping { _ in .default }
+                    model.commitGrouping()
+                }
+                .disabled(settings == .default)
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 360, idealWidth: 400, minHeight: 440)
+        .frame(minWidth: 360, idealWidth: 400, minHeight: 360)
     }
 
     private var summary: String {
@@ -78,20 +62,23 @@ struct GroupingSettingsView: View {
     }
 }
 
-/// 値の変化を即時に通知し、ドラッグの終わりに「確定（保存）」を通知するスライダー。
+/// 値の変化を即時に通知し、ドラッグの終わりに確定（保存）を通知するスライダー。
+///
+/// `onEditingChanged` のクロージャはドラッグ開始時点のものが使われることがあるため、
+/// 確定時には値を渡さない（値を渡すと、ドラッグ開始時点の古い値に巻き戻ってしまう）。
 private struct SettingSlider<Value: BinaryFloatingPoint>: View where Value.Stride: BinaryFloatingPoint {
     let value: Value
     let range: ClosedRange<Value>
     let minimumLabel: String
     let maximumLabel: String
-    let valueText: String?
-    /// (新しい値, 確定したか)
-    let onChange: (Value, Bool) -> Void
+    let valueText: String
+    let onChange: (Value) -> Void
+    let onCommit: () -> Void
 
     var body: some View {
         HStack {
             Slider(
-                value: Binding(get: { value }, set: { onChange($0, false) }),
+                value: Binding(get: { value }, set: onChange),
                 in: range
             ) {
                 EmptyView()
@@ -100,11 +87,9 @@ private struct SettingSlider<Value: BinaryFloatingPoint>: View where Value.Strid
             } maximumValueLabel: {
                 Text(maximumLabel).font(.caption)
             } onEditingChanged: { editing in
-                if !editing { onChange(value, true) }
+                if !editing { onCommit() }
             }
-            if let valueText {
-                Text(valueText).monospacedDigit().frame(minWidth: 40, alignment: .trailing)
-            }
+            Text(valueText).monospacedDigit().frame(minWidth: 52, alignment: .trailing)
         }
     }
 }

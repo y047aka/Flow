@@ -3,38 +3,30 @@ import Foundation
 /// 写真列をシーン（同じ日・同じ場所でのひとまとまりの撮影）に分割する。
 ///
 /// 次の写真をそれまでのシーンに含めるかを、以下の順で判定する:
-/// 1. 撮影日（`dayStartHour` を日の変わり目とする）が変わったら区切る。
+/// 1. 撮影日（`dayStartHour` を日の変わり目とする）が変わったら必ず区切る。
 /// 2. 位置情報があれば、シーンの中心（それまでの撮影位置の平均）からの距離で判定する。
 ///    直前の写真ではなく中心と比べるので、少しずつ移動しながら撮った場合も区切れる。
 ///    同じ場所でも、長時間（`maximumTimeGapAtSameLocation`）空いたら区切る。
-/// 3. 位置情報が無ければ、撮影間隔（`maximumTimeGap`）で判定する。
+/// 3. 位置情報が無ければ区切らない（同じ撮影日は 1 シーン）。
 public struct SceneSegmenter: Sendable {
     public struct Configuration: Sendable {
-        /// 位置情報が無いときに、これ以上撮影間隔が空いたら別シーンにする。
-        public let maximumTimeGap: TimeInterval
         /// シーンの中心からこれ以上離れたら別シーンにする（メートル）。nil なら位置情報を使わない。
         public let maximumDistance: Double?
         /// 同じ場所でも、これ以上撮影間隔が空いたら別シーンにする。
         public let maximumTimeGapAtSameLocation: TimeInterval
-        /// 撮影日が変わったら区切るか。
-        public let splitsByDay: Bool
         /// 1 日の始まりとみなす時刻（0...23）。深夜の撮影を前日と同じシーンにまとめるため。
         public let dayStartHour: Int
         /// 撮影日の判定に使うタイムゾーン。
         public let timeZone: TimeZone
 
         public init(
-            maximumTimeGap: TimeInterval = 30 * 60,
             maximumDistance: Double? = 500,
             maximumTimeGapAtSameLocation: TimeInterval = 3 * 60 * 60,
-            splitsByDay: Bool = true,
             dayStartHour: Int = 4,
             timeZone: TimeZone = .current
         ) {
-            self.maximumTimeGap = maximumTimeGap
             self.maximumDistance = maximumDistance
             self.maximumTimeGapAtSameLocation = maximumTimeGapAtSameLocation
-            self.splitsByDay = splitsByDay
             self.dayStartHour = dayStartHour
             self.timeZone = timeZone
         }
@@ -61,13 +53,11 @@ public struct SceneSegmenter: Sendable {
     /// `next` が、撮影順に並んだ `scene` とは別のシーンになるか。
     func isBoundary(scene: [PhotoAsset], next: PhotoAsset) -> Bool {
         guard let previous = scene.last, let d0 = previous.captureDate, let d1 = next.captureDate else { return true }
-        let gap = d1.timeIntervalSince(d0)
-
-        if configuration.splitsByDay && shootingDay(of: d0) != shootingDay(of: d1) { return true }
-        if let distance = distance(from: scene, to: next), let maximumDistance = configuration.maximumDistance {
-            return distance > maximumDistance || gap > configuration.maximumTimeGapAtSameLocation
+        if shootingDay(of: d0) != shootingDay(of: d1) { return true }
+        guard let distance = distance(from: scene, to: next), let maximumDistance = configuration.maximumDistance else {
+            return false
         }
-        return gap > configuration.maximumTimeGap
+        return distance > maximumDistance || d1.timeIntervalSince(d0) > configuration.maximumTimeGapAtSameLocation
     }
 
     /// シーンの中心（位置情報のある写真の平均位置）から `next` までの距離。どちらかに位置情報が無ければ nil。
