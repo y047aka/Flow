@@ -25,7 +25,7 @@ private struct FakeToneMeasurer: ToneMeasuring {
 
 final class LibraryPipelineTests: XCTestCase {
     func testEndToEnd() async throws {
-        let files = ["0_0.0", "1_0.1", "2_2.0", "172800_2.0", "broken_0"].map { URL(fileURLWithPath: "/card/\($0).raw") }
+        let files = ["0_0.0", "2_0.1", "4_2.0", "172800_2.0", "broken_0"].map { URL(fileURLWithPath: "/card/\($0).raw") }
         let pipeline = LibraryPipeline(
             metadataReader: FakeMetadataReader(),
             analyzer: FakeAnalyzer(),
@@ -40,7 +40,7 @@ final class LibraryPipelineTests: XCTestCase {
         XCTAssertEqual(result.catalog.scenes[0].groups.count, 2)
         // シャープネスが高い 2 枚目がベスト
         let firstGroup = result.catalog.scenes[0].groups[0]
-        XCTAssertEqual(result.catalog.assets[firstGroup.bestAssetID!]?.fileName, "1_0.1.raw")
+        XCTAssertEqual(result.catalog.assets[firstGroup.bestAssetID!]?.fileName, "2_0.1.raw")
         XCTAssertEqual(Set(stages.values), [.readingMetadata, .analyzing, .grouping])
         // 自動補正は取り込みでは計算しない（撮って出しのまま）
         XCTAssertTrue(result.catalog.autoRecipes.isEmpty)

@@ -15,11 +15,15 @@ public struct ImageIOMetadataReader: MetadataReading {
         let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
         let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
         let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        let exifAux = props[kCGImagePropertyExifAuxDictionary] as? [CFString: Any] ?? [:]
 
         return CaptureMetadata(
             captureDate: Self.captureDate(exif: exif, tiff: tiff),
             cameraMake: tiff[kCGImagePropertyTIFFMake] as? String,
             cameraModel: tiff[kCGImagePropertyTIFFModel] as? String,
+            // EXIF 2.3 の BodySerialNumber を優先し、無ければ ExifAux（メーカー独自情報由来）の値を使う。
+            cameraSerialNumber: exif[kCGImagePropertyExifBodySerialNumber] as? String
+                ?? exifAux[kCGImagePropertyExifAuxSerialNumber] as? String,
             lensModel: exif[kCGImagePropertyExifLensModel] as? String,
             focalLength: exif[kCGImagePropertyExifFocalLength] as? Double,
             fNumber: exif[kCGImagePropertyExifFNumber] as? Double,

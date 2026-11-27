@@ -48,7 +48,7 @@ final class SceneSegmenterTests: XCTestCase {
 
 final class RegroupingTests: XCTestCase {
     func testStricterThresholdSplitsGroupsAndKeepsIDsStable() {
-        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 1), c = makeAsset("c", at: 2)
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 2), c = makeAsset("c", at: 4)
         let analyses: [PhotoAsset.ID: ImageAnalysis] = [
             a.id: ImageAnalysis(featureVector: vector(angle: 0)),
             b.id: ImageAnalysis(featureVector: vector(angle: 0.1)),   // 距離 ≈ 0.10
@@ -66,9 +66,10 @@ final class RegroupingTests: XCTestCase {
     }
 }
 
+// 連写判定（1 秒以内）に当たらないよう、見た目の判定のテストは 2 秒間隔で並べる。
 final class SimilarityClustererTests: XCTestCase {
     func testGroupsSimilarConsecutiveShots() {
-        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 1), c = makeAsset("c", at: 2), d = makeAsset("d", at: 3)
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 2), c = makeAsset("c", at: 4), d = makeAsset("d", at: 6)
         let analyses: [PhotoAsset.ID: ImageAnalysis] = [
             a.id: ImageAnalysis(featureVector: vector(angle: 0)),
             b.id: ImageAnalysis(featureVector: vector(angle: 0.1)),
@@ -86,17 +87,80 @@ final class SimilarityClustererTests: XCTestCase {
     }
 
     func testMissingAnalysisMakesSingleton() {
-        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 1)
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 2)
         let analyses = [a.id: ImageAnalysis(featureVector: vector(angle: 0))]
         XCTAssertEqual(SimilarityClusterer().cluster([a, b], analyses: analyses).count, 2)
     }
 
     func testComparisonWindowToleratesDrift() {
         // a→b→c と少しずつ構図が変わる（パン撮影など）。隣同士が近ければ同じグループ。
-        let assets = (0..<4).map { makeAsset("p\($0)", at: TimeInterval($0)) }
+        let assets = (0..<4).map { makeAsset("p\($0)", at: TimeInterval($0 * 2)) }
         var analyses: [PhotoAsset.ID: ImageAnalysis] = [:]
         for (i, asset) in assets.enumerated() { analyses[asset.id] = ImageAnalysis(featureVector: vector(angle: Float(i) * 0.3)) }
         XCTAssertEqual(SimilarityClusterer().cluster(assets, analyses: analyses).count, 1)
+    }
+
+    // MARK: 連写
+
+    func testBurstStaysTogetherEvenIfLooksDifferent() {
+        // 動く被写体の連写: 0.2 秒間隔で見た目は大きく変わる
+        let assets = (0..<5).map { makeAsset("b\($0)", at: Double($0) * 0.2, camera: "X1") }
+        let analyses = Dictionary(uniqueKeysWithValues: assets.enumerated().map {
+            ($1.id, ImageAnalysis(featureVector: vector(angle: Float($0) * 1.0)))
+        })
+        XCTAssertEqual(SimilarityClusterer().cluster(assets, analyses: analyses).count, 1)
+    }
+
+    func testBurstWithoutSubsecondsIsDetected() {
+        // サブ秒を記録しないカメラ: 同じ秒は間隔 0、隣の秒は間隔 1
+        let assets = [0, 0, 0, 1, 1].enumerated().map { makeAsset("b\($0)", at: TimeInterval($1)) }
+        XCTAssertEqual(SimilarityClusterer().cluster(assets, analyses: [:]).count, 1)
+    }
+
+    func testGapLongerThanBurstUsesVisualSimilarity() {
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 1.5)
+        let analyses = [a.id: ImageAnalysis(featureVector: vector(angle: 0)), b.id: ImageAnalysis(featureVector: vector(angle: 2.0))]
+        XCTAssertEqual(SimilarityClusterer().cluster([a, b], analyses: analyses).count, 2)
+    }
+
+    // MARK: カメラの区別
+
+    func testDifferentModelsNeverShareGroup() {
+        // 2 台で交互に同じ瞬間を撮影。見た目も同じだが、カメラごとに別のグループになる。
+        let assets = [
+            makeAsset("a1", at: 0.0, camera: "X1"), makeAsset("b1", at: 0.1, camera: "Z9"),
+            makeAsset("a2", at: 0.5, camera: "X1"), makeAsset("b2", at: 0.6, camera: "Z9"),
+        ]
+        let analyses = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, ImageAnalysis(featureVector: vector(angle: 0))) })
+        let groups = SimilarityClusterer().cluster(assets, analyses: analyses)
+        // 各カメラの写真は交互に挟まれていても 1 つにまとまり、グループは先頭の写真の撮影順に並ぶ
+        XCTAssertEqual(groups.map { $0.map(\.fileName) }, [["a1", "a2"], ["b1", "b2"]])
+    }
+
+    func testSerialNumberDistinguishesBodiesOfSameModel() {
+        let assets = [
+            makeAsset("a1", at: 0.0, camera: "X1", serial: "111"),
+            makeAsset("b1", at: 0.1, camera: "X1", serial: "222"),
+            makeAsset("a2", at: 0.2, camera: "X1", serial: "111"),
+        ]
+        let groups = SimilarityClusterer().cluster(assets, analyses: [:])
+        XCTAssertEqual(groups.map { $0.map(\.fileName) }, [["a1", "a2"], ["b1"]])
+    }
+
+    func testSameModelWithoutSerialIsTreatedAsOneCamera() {
+        // シリアル番号が無ければ機種で識別するので、同じ機種 2 台の同時撮影は区別できない（許容）
+        let assets = [makeAsset("a1", at: 0.0, camera: "X1"), makeAsset("b1", at: 0.1, camera: "X1")]
+        XCTAssertEqual(SimilarityClusterer().cluster(assets, analyses: [:]).count, 1)
+    }
+}
+
+final class CameraIdentityTests: XCTestCase {
+    func testIdentityPrefersSerialNumber() {
+        XCTAssertEqual(CaptureMetadata(cameraMake: "Maker", cameraModel: "X1", cameraSerialNumber: " 123 ").cameraIdentity,
+                       .body(make: "Maker", model: "X1", serialNumber: "123"))
+        XCTAssertEqual(CaptureMetadata(cameraMake: "Maker", cameraModel: "X1", cameraSerialNumber: "").cameraIdentity,
+                       .model(make: "Maker", model: "X1"))
+        XCTAssertNil(CaptureMetadata().cameraIdentity)
     }
 }
 

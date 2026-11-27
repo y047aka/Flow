@@ -29,6 +29,8 @@ public struct CaptureMetadata: Codable, Hashable, Sendable {
     public let captureDate: Date?
     public let cameraMake: String?
     public let cameraModel: String?
+    /// カメラ本体のシリアル番号（EXIF BodySerialNumber など）。記録しない機種もある。
+    public let cameraSerialNumber: String?
     public let lensModel: String?
     public let focalLength: Double?
     public let fNumber: Double?
@@ -42,6 +44,7 @@ public struct CaptureMetadata: Codable, Hashable, Sendable {
         captureDate: Date? = nil,
         cameraMake: String? = nil,
         cameraModel: String? = nil,
+        cameraSerialNumber: String? = nil,
         lensModel: String? = nil,
         focalLength: Double? = nil,
         fNumber: Double? = nil,
@@ -54,6 +57,7 @@ public struct CaptureMetadata: Codable, Hashable, Sendable {
         self.captureDate = captureDate
         self.cameraMake = cameraMake
         self.cameraModel = cameraModel
+        self.cameraSerialNumber = cameraSerialNumber
         self.lensModel = lensModel
         self.focalLength = focalLength
         self.fNumber = fNumber
@@ -63,6 +67,27 @@ public struct CaptureMetadata: Codable, Hashable, Sendable {
         self.pixelHeight = pixelHeight
         self.location = location
     }
+}
+
+extension CaptureMetadata {
+    /// 撮影したカメラを識別する値。シリアル番号があれば個体単位、無ければ機種単位で識別する。
+    /// どちらも記録されていなければ nil（どのカメラか分からない）。
+    public var cameraIdentity: CameraIdentity? {
+        let make = cameraMake?.trimmingCharacters(in: .whitespaces) ?? ""
+        let model = cameraModel?.trimmingCharacters(in: .whitespaces) ?? ""
+        if let serial = cameraSerialNumber?.trimmingCharacters(in: .whitespaces), !serial.isEmpty {
+            return .body(make: make, model: model, serialNumber: serial)
+        }
+        return make.isEmpty && model.isEmpty ? nil : .model(make: make, model: model)
+    }
+}
+
+/// カメラの識別子。
+public enum CameraIdentity: Hashable, Sendable {
+    /// シリアル番号で特定した個体。
+    case body(make: String, model: String, serialNumber: String)
+    /// 機種のみ（同じ機種の別の個体とは区別できない）。
+    case model(make: String, model: String)
 }
 
 public struct GeoCoordinate: Codable, Hashable, Sendable {

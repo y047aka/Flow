@@ -93,6 +93,8 @@ Flow/
                              - ラプラシアン分散によるシャープネス
        3. グルーピング      SceneSegmenter → SimilarityClusterer → BestShotSelector
                              シーン: 撮影日ごと（朝4時切替）
+                             類似グループ: カメラ（シリアル番号、無ければ機種）ごとに撮影順に走査し、
+                                     ①1秒以内の連写 ②60秒以内かつ見た目の距離が閾値以下 なら同じグループ
  └ 取り込み完了（ここで操作できるようになる）
  └ 自動補正（裏で計算）     中立現像の縮小画像のヒストグラムから露出・ハイライト・シャドウのみ穏やかに補正
                              優先順: 開いている写真 → 各グループのベストショット → 残り
@@ -116,6 +118,8 @@ Flow/
 
 | 値 | 場所 | 初期値 |
 |---|---|---|
+| 連写とみなす撮影間隔 | `SimilarityClusterer.Configuration.burstInterval` | 1 秒 |
+| 似たショットとみなす最大の撮影間隔 | `SimilarityClusterer.Configuration.maximumTimeGap` | 60 秒 |
 | 1 日の始まりの時刻 | `SceneSegmenter.Configuration.dayStartHour` | 4 時 |
 | ベストショットの重み | `BestShotSelector.Weights` | 美しさ 1.0 / シャープネス 1.0 / 顔 1.5 |
 | 自動露出の強さ・上限 | `AutoToneEstimator.Configuration` | 60% / ±1EV |

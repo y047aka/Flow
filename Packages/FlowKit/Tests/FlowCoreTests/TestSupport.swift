@@ -3,10 +3,22 @@ import Foundation
 
 let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
 
-func makeAsset(_ name: String, at seconds: TimeInterval?, location: GeoCoordinate? = nil) -> PhotoAsset {
+func makeAsset(
+    _ name: String,
+    at seconds: TimeInterval?,
+    location: GeoCoordinate? = nil,
+    camera: String? = nil,
+    serial: String? = nil
+) -> PhotoAsset {
     PhotoAsset(
         fileURL: URL(fileURLWithPath: "/photos/\(name)"),
-        metadata: CaptureMetadata(captureDate: seconds.map { baseDate.addingTimeInterval($0) }, location: location)
+        metadata: CaptureMetadata(
+            captureDate: seconds.map { baseDate.addingTimeInterval($0) },
+            cameraMake: camera.map { _ in "Maker" },
+            cameraModel: camera,
+            cameraSerialNumber: serial,
+            location: location
+        )
     )
 }
 
