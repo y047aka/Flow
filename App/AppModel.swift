@@ -72,16 +72,6 @@ final class AppModel {
         collapsedSceneIDs.formSymmetricDifference([sceneID])
     }
 
-    /// すべてのシーンが折り畳まれているか。
-    var areAllScenesCollapsed: Bool {
-        guard let scenes = catalog?.scenes, !scenes.isEmpty else { return false }
-        return scenes.allSatisfy { collapsedSceneIDs.contains($0.id) }
-    }
-
-    func setAllScenesExpanded(_ expanded: Bool) {
-        collapsedSceneIDs = expanded ? [] : Set(catalog?.scenes.map(\.id) ?? [])
-    }
-
     // MARK: - 取り込み
 
     func importFolder(_ folder: URL) async {
