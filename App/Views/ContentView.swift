@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var isPickingFolder = false
     @State private var folderPurpose: FolderPurpose = .importPhotos
+    @State private var isShowingGroupingSettings = false
 
     enum FolderPurpose { case importPhotos, export }
 
@@ -65,6 +66,16 @@ struct ContentView: View {
                 Label("取り込み", systemImage: "square.and.arrow.down")
             }
             .disabled(model.isBusy)
+        }
+        ToolbarItem {
+            Button { isShowingGroupingSettings = true } label: {
+                Label("グループ分け", systemImage: "slider.horizontal.3")
+            }
+            .disabled(model.catalog == nil || model.isBusy)
+            .popover(isPresented: $isShowingGroupingSettings) {
+                GroupingSettingsView()
+                    .environment(model)
+            }
         }
         ToolbarItem {
             Picker("プリセット", selection: Binding(

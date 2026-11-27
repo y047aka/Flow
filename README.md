@@ -93,6 +93,8 @@ Flow/
                              - ラプラシアン分散によるシャープネス
        3. 自動補正推定      中立現像の縮小画像のヒストグラムから露出・ハイライト・シャドウのみ穏やかに補正
        4. グルーピング      SceneSegmenter → SimilarityClusterer → BestShotSelector
+                             シーン: ①撮影日が変わる（朝4時切替）②位置情報があればシーン中心からの距離
+                                     ③位置情報が無ければ撮影間隔 で区切る
  └ Catalog（JSON 保存）    元 RAW + 非破壊レシピ。プリセットは表示時・書き出し時に重ねる
 ```
 
@@ -102,13 +104,21 @@ Flow/
 
 ## 調整が必要な値
 
-実際の写真で確かめて調整する値。
+ツールバーの「グループ分け」から、次の値をスライダーで調整できます（解析をやり直さず即時反映、カタログに保存）。
+
+| 値 | 初期値 |
+|---|---|
+| 似たショットとみなす特徴ベクトル距離（小さいほど厳しい） | 0.55 |
+| シーンを区切る距離（シーン中心から） | 500 m |
+| 位置情報が無いときにシーンを区切る撮影間隔 | 30 分 |
+| 撮影日で区切る | オン |
+
+コードでのみ変更できる値:
 
 | 値 | 場所 | 初期値 |
 |---|---|---|
-| シーン区切りの撮影間隔 | `SceneSegmenter.Configuration.maximumTimeGap` | 15 分 |
-| シーン区切りの距離 | `SceneSegmenter.Configuration.maximumDistance` | 500 m |
-| 類似とみなす特徴ベクトル距離 | `SimilarityClusterer.Configuration.maximumDistance` | 0.55 |
+| 同じ場所でも区切る撮影間隔 | `SceneSegmenter.Configuration.maximumTimeGapAtSameLocation` | 3 時間 |
+| 1 日の始まりの時刻 | `SceneSegmenter.Configuration.dayStartHour` | 4 時 |
 | ベストショットの重み | `BestShotSelector.Weights` | 美しさ 1.0 / シャープネス 1.0 / 顔 1.5 |
 | 自動露出の強さ・上限 | `AutoToneEstimator.Configuration` | 60% / ±1EV |
 | シャープネスの正規化 | `GrayscaleBuffer.normalizedSharpness(halfPoint:)` | 300 |
@@ -121,5 +131,6 @@ Flow/
 - [ ] `ImageCaptureCore` によるカメラ・SD カードからの直接取り込み
 - [ ] 取り込みの途中経過の保存と再開、キャンセル UI
 - [ ] グループの手動修正（分割・統合・ベスト変更）
+- [ ] 類似判定に顔の比較を加える（同じ構図・別の人を区別する）
 - [ ] カタログが大きくなったら SQLite（GRDB など）へ移行
 - [ ] OS が未対応のカメラ機種向けの案内（DNG 変換）

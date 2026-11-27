@@ -65,6 +65,7 @@ final class AppModel {
                 }
             })
             let catalog = result.catalog
+                .regrouped(with: groupingSettings)
                 .with(presetID: self.catalog?.presetID ?? result.catalog.presetID)
                 .with(sourceFolderBookmark: try? folder.bookmarkData(options: Self.bookmarkCreationOptions))
             self.catalog = catalog
@@ -83,6 +84,26 @@ final class AppModel {
     func setPreset(_ id: DevelopPreset.ID) {
         catalog = catalog?.with(presetID: id)
         save()
+    }
+
+    // MARK: - グルーピング
+
+    var groupingSettings: GroupingSettings { catalog?.grouping ?? .default }
+
+    /// 設定を変えてグルーピングし直す（解析はやり直さないので即時）。
+    /// スライダー操作中は `persist: false` で画面だけ更新し、操作の終わりに保存する。
+    func updateGrouping(_ settings: GroupingSettings, persist: Bool = true) {
+        guard let catalog, settings != catalog.grouping else {
+            if persist { save() }
+            return
+        }
+        // 選択中のシーンの先頭の写真を含むシーンを、組み直した後も選択し続ける。
+        let anchor = selectedScene?.assetIDs.first
+        let regrouped = catalog.regrouped(with: settings)
+        self.catalog = regrouped
+        selectedSceneID = anchor.flatMap { id in regrouped.scenes.first { $0.assetIDs.contains(id) }?.id }
+            ?? regrouped.scenes.first?.id
+        if persist { save() }
     }
 
     // MARK: - 書き出し

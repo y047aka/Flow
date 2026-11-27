@@ -46,6 +46,8 @@ public struct Catalog: Codable, Sendable {
     public let presetID: DevelopPreset.ID
     /// 取り込み元フォルダの（セキュリティスコープ付き）ブックマーク。再起動後のアクセス復元に使う。
     public let sourceFolderBookmark: Data?
+    /// グルーピングの設定。古いカタログには無いので省略可能。
+    public let groupingSettings: GroupingSettings?
 
     public init(
         assets: [PhotoAsset.ID: PhotoAsset] = [:],
@@ -53,7 +55,8 @@ public struct Catalog: Codable, Sendable {
         autoRecipes: [PhotoAsset.ID: DevelopRecipe] = [:],
         scenes: [PhotoScene] = [],
         presetID: DevelopPreset.ID = DevelopPreset.neutral.id,
-        sourceFolderBookmark: Data? = nil
+        sourceFolderBookmark: Data? = nil,
+        groupingSettings: GroupingSettings? = nil
     ) {
         self.version = Self.currentVersion
         self.assets = assets
@@ -62,9 +65,13 @@ public struct Catalog: Codable, Sendable {
         self.scenes = scenes
         self.presetID = presetID
         self.sourceFolderBookmark = sourceFolderBookmark
+        self.groupingSettings = groupingSettings
     }
 
     // MARK: - 派生値
+
+    /// 現在のグルーピング設定（未設定なら既定値）。
+    public var grouping: GroupingSettings { groupingSettings ?? .default }
 
     public var preset: DevelopPreset {
         DevelopPreset.builtIn.first { $0.id == presetID } ?? .neutral
@@ -90,15 +97,16 @@ public struct Catalog: Codable, Sendable {
         copy(sourceFolderBookmark: .some(sourceFolderBookmark))
     }
 
-    /// 解析をやり直さずに、別の設定でグルーピングし直したカタログ。
-    public func regrouped(by grouper: CatalogGrouper) -> Catalog {
-        copy(scenes: grouper.group(Array(assets.values), analyses: analyses))
+    /// 解析をやり直さずに、別の設定でグルーピングし直したカタログ。数百枚なら数ミリ秒で終わる。
+    public func regrouped(with settings: GroupingSettings) -> Catalog {
+        copy(scenes: settings.grouper.group(Array(assets.values), analyses: analyses), groupingSettings: settings)
     }
 
     private func copy(
         scenes: [PhotoScene]? = nil,
         presetID: DevelopPreset.ID? = nil,
-        sourceFolderBookmark: Data?? = nil
+        sourceFolderBookmark: Data?? = nil,
+        groupingSettings: GroupingSettings? = nil
     ) -> Catalog {
         Catalog(
             assets: assets,
@@ -106,7 +114,8 @@ public struct Catalog: Codable, Sendable {
             autoRecipes: autoRecipes,
             scenes: scenes ?? self.scenes,
             presetID: presetID ?? self.presetID,
-            sourceFolderBookmark: sourceFolderBookmark ?? self.sourceFolderBookmark
+            sourceFolderBookmark: sourceFolderBookmark ?? self.sourceFolderBookmark,
+            groupingSettings: groupingSettings ?? self.groupingSettings
         )
     }
 }

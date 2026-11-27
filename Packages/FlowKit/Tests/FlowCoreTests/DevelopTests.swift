@@ -79,7 +79,7 @@ final class CatalogTests: XCTestCase {
             analyses: [asset.id: ImageAnalysis(featureVector: vector(angle: 0), aestheticsScore: 0.3)],
             autoRecipes: [asset.id: recipe],
             presetID: DevelopPreset.soft.id
-        ).regrouped(by: CatalogGrouper())
+        ).regrouped(with: .default)
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("catalog.json")
         let store = CatalogStore(fileURL: url)
@@ -91,6 +91,7 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(loaded.autoRecipes, catalog.autoRecipes)
         XCTAssertEqual(loaded.scenes, catalog.scenes)
         XCTAssertEqual(loaded.preset, .soft)
+        XCTAssertEqual(loaded.grouping, .default)
         XCTAssertEqual(loaded.bestAssets.map(\.id), [asset.id])
     }
 }

@@ -1,16 +1,42 @@
 import Foundation
 
-/// 撮影時刻（と任意で撮影位置）の不連続点で写真列をシーンに分割する。
+/// 写真列をシーン（同じ日・同じ場所でのひとまとまりの撮影）に分割する。
+///
+/// 次の写真をそれまでのシーンに含めるかを、以下の順で判定する:
+/// 1. 撮影日（`dayStartHour` を日の変わり目とする）が変わったら区切る。
+/// 2. 位置情報があれば、シーンの中心（それまでの撮影位置の平均）からの距離で判定する。
+///    直前の写真ではなく中心と比べるので、少しずつ移動しながら撮った場合も区切れる。
+///    同じ場所でも、長時間（`maximumTimeGapAtSameLocation`）空いたら区切る。
+/// 3. 位置情報が無ければ、撮影間隔（`maximumTimeGap`）で判定する。
 public struct SceneSegmenter: Sendable {
     public struct Configuration: Sendable {
-        /// これ以上撮影間隔が空いたら別シーンにする。
+        /// 位置情報が無いときに、これ以上撮影間隔が空いたら別シーンにする。
         public let maximumTimeGap: TimeInterval
-        /// これ以上撮影位置が離れたら別シーンにする（両方に GPS がある場合のみ）。
+        /// シーンの中心からこれ以上離れたら別シーンにする（メートル）。nil なら位置情報を使わない。
         public let maximumDistance: Double?
+        /// 同じ場所でも、これ以上撮影間隔が空いたら別シーンにする。
+        public let maximumTimeGapAtSameLocation: TimeInterval
+        /// 撮影日が変わったら区切るか。
+        public let splitsByDay: Bool
+        /// 1 日の始まりとみなす時刻（0...23）。深夜の撮影を前日と同じシーンにまとめるため。
+        public let dayStartHour: Int
+        /// 撮影日の判定に使うタイムゾーン。
+        public let timeZone: TimeZone
 
-        public init(maximumTimeGap: TimeInterval = 15 * 60, maximumDistance: Double? = 500) {
+        public init(
+            maximumTimeGap: TimeInterval = 30 * 60,
+            maximumDistance: Double? = 500,
+            maximumTimeGapAtSameLocation: TimeInterval = 3 * 60 * 60,
+            splitsByDay: Bool = true,
+            dayStartHour: Int = 4,
+            timeZone: TimeZone = .current
+        ) {
             self.maximumTimeGap = maximumTimeGap
             self.maximumDistance = maximumDistance
+            self.maximumTimeGapAtSameLocation = maximumTimeGapAtSameLocation
+            self.splitsByDay = splitsByDay
+            self.dayStartHour = dayStartHour
+            self.timeZone = timeZone
         }
     }
 
@@ -25,23 +51,38 @@ public struct SceneSegmenter: Sendable {
         let datedScenes = assets
             .filter { $0.captureDate != nil }
             .sorted(by: Self.chronological)
-            .chunked { !isBoundary(between: $0, and: $1) }
+            .grouped { scene, next in !isBoundary(scene: scene, next: next) }
         let undated = assets
             .filter { $0.captureDate == nil }
             .sorted { $0.fileName < $1.fileName }
         return datedScenes + (undated.isEmpty ? [] : [undated])
     }
 
-    func isBoundary(between a: PhotoAsset, and b: PhotoAsset) -> Bool {
-        guard let da = a.captureDate, let db = b.captureDate else { return true }
-        return db.timeIntervalSince(da) > configuration.maximumTimeGap || isFarApart(a, b)
+    /// `next` が、撮影順に並んだ `scene` とは別のシーンになるか。
+    func isBoundary(scene: [PhotoAsset], next: PhotoAsset) -> Bool {
+        guard let previous = scene.last, let d0 = previous.captureDate, let d1 = next.captureDate else { return true }
+        let gap = d1.timeIntervalSince(d0)
+
+        if configuration.splitsByDay && shootingDay(of: d0) != shootingDay(of: d1) { return true }
+        if let distance = distance(from: scene, to: next), let maximumDistance = configuration.maximumDistance {
+            return distance > maximumDistance || gap > configuration.maximumTimeGapAtSameLocation
+        }
+        return gap > configuration.maximumTimeGap
     }
 
-    /// 両方に位置情報があり、かつ閾値より離れているか。
-    func isFarApart(_ a: PhotoAsset, _ b: PhotoAsset) -> Bool {
-        guard let maximumDistance = configuration.maximumDistance,
-              let la = a.metadata.location, let lb = b.metadata.location else { return false }
-        return la.distance(to: lb) > maximumDistance
+    /// シーンの中心（位置情報のある写真の平均位置）から `next` までの距離。どちらかに位置情報が無ければ nil。
+    func distance(from scene: [PhotoAsset], to next: PhotoAsset) -> Double? {
+        guard let location = next.metadata.location,
+              let center = GeoCoordinate.centroid(of: scene.compactMap(\.metadata.location)) else { return nil }
+        return center.distance(to: location)
+    }
+
+    /// 撮影日（`dayStartHour` 時を日の始まりとする）。
+    func shootingDay(of date: Date) -> DateComponents {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = configuration.timeZone
+        let shifted = date.addingTimeInterval(-TimeInterval(configuration.dayStartHour) * 3600)
+        return calendar.dateComponents([.year, .month, .day], from: shifted)
     }
 
     /// 撮影日時 → ファイル名の順で並べる（同一秒の連写をファイル名順で安定させる）。
@@ -50,5 +91,17 @@ public struct SceneSegmenter: Sendable {
         case let (da?, db?) where da != db: da < db
         default: a.fileName < b.fileName
         }
+    }
+}
+
+extension GeoCoordinate {
+    /// 座標の単純平均。数 km 程度の範囲なら十分な精度。
+    static func centroid(of coordinates: [GeoCoordinate]) -> GeoCoordinate? {
+        guard !coordinates.isEmpty else { return nil }
+        let n = Double(coordinates.count)
+        return GeoCoordinate(
+            latitude: coordinates.map(\.latitude).sum() / n,
+            longitude: coordinates.map(\.longitude).sum() / n
+        )
     }
 }

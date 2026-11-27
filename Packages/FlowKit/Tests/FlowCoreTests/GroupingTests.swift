@@ -2,33 +2,89 @@ import XCTest
 @testable import FlowCore
 
 final class SceneSegmenterTests: XCTestCase {
-    func testSplitsOnTimeGap() {
+    // baseDate は 2023-11-14 22:13:20 UTC。日付判定は UTC・朝 4 時切り替えで行う。
+    let segmenter = SceneSegmenter(configuration: .init(timeZone: TimeZone(identifier: "UTC")!))
+    let park = GeoCoordinate(latitude: 35.6715, longitude: 139.6950)
+
+    func testSplitsOnTimeGapWithoutLocation() {
         let assets = [
             makeAsset("c.raw", at: 2000),
             makeAsset("a.raw", at: 0),
             makeAsset("b.raw", at: 30),
             makeAsset("d.raw", at: 2010),
         ]
-        let scenes = SceneSegmenter().segment(assets)
-        XCTAssertEqual(scenes.map { $0.map(\.fileName) }, [["a.raw", "b.raw"], ["c.raw", "d.raw"]])
+        XCTAssertEqual(segmenter.segment(assets).map { $0.map(\.fileName) }, [["a.raw", "b.raw"], ["c.raw", "d.raw"]])
     }
 
     func testSplitsOnDistance() {
         let tokyo = GeoCoordinate(latitude: 35.681, longitude: 139.767)
         let yokohama = GeoCoordinate(latitude: 35.466, longitude: 139.622)
         let assets = [makeAsset("a.raw", at: 0, location: tokyo), makeAsset("b.raw", at: 60, location: yokohama)]
-        XCTAssertEqual(SceneSegmenter().segment(assets).count, 2)
+        XCTAssertEqual(segmenter.segment(assets).count, 2)
+    }
+
+    func testSameLocationKeepsSceneDespiteTimeGap() {
+        // 同じ公園で 1 時間休憩を挟んでも、位置情報があれば同じシーン
+        let assets = [makeAsset("a.raw", at: 0, location: park), makeAsset("b.raw", at: 3600, location: park)]
+        XCTAssertEqual(segmenter.segment(assets).count, 1)
+    }
+
+    func testVeryLongGapAtSameLocationSplits() {
+        let assets = [makeAsset("a.raw", at: -20000, location: park), makeAsset("b.raw", at: -5000, location: park)]
+        XCTAssertEqual(segmenter.segment(assets).count, 2)
+    }
+
+    func testGradualMovementSplitsAgainstSceneCenter() {
+        // 約 200m ずつ北へ移動。隣同士は近いが、シーンの中心からは離れていく。
+        let assets = (0..<8).map { i in
+            makeAsset("p\(i).raw", at: TimeInterval(i * 60),
+                      location: GeoCoordinate(latitude: park.latitude + Double(i) * 0.0018, longitude: park.longitude))
+        }
+        XCTAssertGreaterThan(segmenter.segment(assets).count, 1)
+    }
+
+    func testMidnightDoesNotSplitBeforeDayStartHour() {
+        // 23:50 と翌 0:03 は同じ撮影日（朝 4 時まで前日扱い）
+        let assets = [makeAsset("a.raw", at: 5800, location: park), makeAsset("b.raw", at: 6600, location: park)]
+        XCTAssertEqual(segmenter.segment(assets).count, 1)
+    }
+
+    func testDayStartHourSplits() {
+        // 3:46 と 4:03 は別の撮影日
+        let assets = [makeAsset("a.raw", at: 20000, location: park), makeAsset("b.raw", at: 21000, location: park)]
+        XCTAssertEqual(segmenter.segment(assets).count, 2)
+        let noDaySplit = SceneSegmenter(configuration: .init(splitsByDay: false, timeZone: TimeZone(identifier: "UTC")!))
+        XCTAssertEqual(noDaySplit.segment(assets).count, 1)
     }
 
     func testUndatedAssetsGoLast() {
         let assets = [makeAsset("x.raw", at: nil), makeAsset("a.raw", at: 0)]
-        let scenes = SceneSegmenter().segment(assets)
-        XCTAssertEqual(scenes.map { $0.map(\.fileName) }, [["a.raw"], ["x.raw"]])
+        XCTAssertEqual(segmenter.segment(assets).map { $0.map(\.fileName) }, [["a.raw"], ["x.raw"]])
     }
 
     func testSameSecondIsOrderedByFileName() {
         let assets = [makeAsset("b.raw", at: 0), makeAsset("a.raw", at: 0)]
-        XCTAssertEqual(SceneSegmenter().segment(assets).first?.map(\.fileName), ["a.raw", "b.raw"])
+        XCTAssertEqual(segmenter.segment(assets).first?.map(\.fileName), ["a.raw", "b.raw"])
+    }
+}
+
+final class RegroupingTests: XCTestCase {
+    func testStricterThresholdSplitsGroupsAndKeepsIDsStable() {
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 1), c = makeAsset("c", at: 2)
+        let analyses: [PhotoAsset.ID: ImageAnalysis] = [
+            a.id: ImageAnalysis(featureVector: vector(angle: 0)),
+            b.id: ImageAnalysis(featureVector: vector(angle: 0.1)),   // 距離 ≈ 0.10
+            c.id: ImageAnalysis(featureVector: vector(angle: 0.45)),  // b との距離 ≈ 0.35
+        ]
+        let loose = Catalog(assets: [a.id: a, b.id: b, c.id: c], analyses: analyses).regrouped(with: .default)
+        let strict = loose.regrouped(with: loose.grouping.with(similarityThreshold: 0.2))
+
+        XCTAssertEqual(loose.scenes.flatMap(\.groups).map(\.assetIDs.count), [3])
+        XCTAssertEqual(strict.scenes.flatMap(\.groups).map(\.assetIDs.count), [2, 1])
+        XCTAssertEqual(strict.grouping.similarityThreshold, 0.2)
+        // 先頭の写真が同じシーン・グループは ID が変わらない
+        XCTAssertEqual(loose.scenes.map(\.id), strict.scenes.map(\.id))
+        XCTAssertEqual(loose.scenes[0].groups[0].id, strict.scenes[0].groups[0].id)
     }
 }
 
