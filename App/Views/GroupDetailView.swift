@@ -14,7 +14,7 @@ struct GroupDetailView: View {
                 DevelopedPreview(asset: asset, recipe: catalog.recipe(for: id))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 MetadataBar(asset: asset, analysis: catalog.analyses[id], isBest: id == group.bestAssetID,
-                            isAutoTonePending: model.isAutoTonePending(id))
+                            isAutoTonePending: model.isAutoTonePending(id), isAutoTonePaused: model.isAutoTonePaused)
             }
             if group.assetIDs.count > 1 {
                 ScrollView(.horizontal) {
@@ -85,6 +85,7 @@ private struct MetadataBar: View {
     let analysis: ImageAnalysis?
     let isBest: Bool
     let isAutoTonePending: Bool
+    let isAutoTonePaused: Bool
 
     var body: some View {
         HStack(spacing: 16) {
@@ -94,8 +95,13 @@ private struct MetadataBar: View {
             Spacer()
             if isAutoTonePending {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("自動補正を計算中（今は撮って出し）")
+                    if isAutoTonePaused {
+                        Image(systemName: "pause.circle")
+                        Text("自動補正は一時停止中（撮って出し）")
+                    } else {
+                        ProgressView().controlSize(.small)
+                        Text("自動補正を計算中（今は撮って出し）")
+                    }
                 }
                 .foregroundStyle(.secondary)
             }

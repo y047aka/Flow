@@ -14,12 +14,15 @@ final class AppModel {
     var errorMessage: String?
     var exportOptions = ExportOptions()
 
-    /// 開いている写真。自動補正を最優先で計算する。
+    /// 開いている写真。自動補正を最優先で計算する（一時停止中は計算しない）。
     var focusedAssetID: PhotoAsset.ID? {
         didSet {
-            if let id = focusedAssetID, id != oldValue { _ = autoToneTask(for: id) }
+            if let id = focusedAssetID, id != oldValue, !isAutoTonePaused { _ = autoToneTask(for: id) }
         }
     }
+
+    /// ユーザーが自動補正の計算を一時停止しているか。保存しないので、起動し直すと再開する。
+    private(set) var isAutoTonePaused = false
 
     let developer: CoreImageRAWDeveloper
     let thumbnails = ThumbnailProvider()
@@ -151,10 +154,23 @@ final class AppModel {
         catalog.map { $0.assets[id] != nil && $0.autoRecipes[id] == nil } ?? false
     }
 
+    /// 自動補正の計算を一時停止する。計算中の 1 枚は最後まで計算して結果を残す。
+    /// 書き出しは補正なしで書き出さないよう、停止中でも対象の写真だけはその場で計算する。
+    func pauseAutoTone() {
+        isAutoTonePaused = true
+        stopAutoTone()
+    }
+
+    func resumeAutoTone() {
+        isAutoTonePaused = false
+        startAutoTone()
+    }
+
     /// 未計算の写真の自動補正を、優先順（開いている写真 → ベストショット → 残り）に裏で計算し始める。
+    /// 一時停止中は何もしない（取り込みや書き出しの後に呼ばれても再開しない）。
     func startAutoTone() {
         stopAutoTone()
-        guard catalog?.autoTonePriority().isEmpty == false else { return }
+        guard !isAutoTonePaused, catalog?.autoTonePriority().isEmpty == false else { return }
         autoToneWorkers = (0..<AutoToneService.backgroundConcurrency).map { _ in
             Task(priority: .utility) { await self.runAutoToneWorker() }
         }

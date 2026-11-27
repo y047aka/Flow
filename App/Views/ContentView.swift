@@ -66,12 +66,9 @@ struct ContentView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem {
             if let progress = model.autoToneProgress {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("自動補正 \(progress.completed) / \(progress.total)")
-                        .font(.caption).monospacedDigit()
+                AutoToneStatus(progress: progress, isPaused: model.isAutoTonePaused) {
+                    model.isAutoTonePaused ? model.resumeAutoTone() : model.pauseAutoTone()
                 }
-                .help("自動補正を裏で計算しています。計算が済んでいない写真は撮って出しで表示されます。")
             }
         }
         ToolbarItem {
@@ -106,6 +103,32 @@ struct ContentView: View {
                 Label("ベストショットを書き出し", systemImage: "square.and.arrow.up")
             }
             .disabled(model.catalog == nil || model.isBusy)
+        }
+    }
+}
+
+/// ツールバーの自動補正の進捗と、一時停止／再開ボタン。
+private struct AutoToneStatus: View {
+    let progress: (completed: Int, total: Int)
+    let isPaused: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if isPaused {
+                Image(systemName: "pause.circle").foregroundStyle(.secondary)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            Text("自動補正\(isPaused ? "（停止中）" : "") \(progress.completed) / \(progress.total)")
+                .font(.caption).monospacedDigit()
+            Button(action: toggle) {
+                Label(isPaused ? "自動補正を再開" : "自動補正を一時停止",
+                      systemImage: isPaused ? "play.fill" : "pause.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .help(isPaused ? "自動補正の計算を再開します。"
+                           : "自動補正の計算を一時停止します。計算が済んでいない写真は撮って出しで表示されます（書き出し時はその場で計算します）。")
         }
     }
 }
