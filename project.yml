@@ -1,0 +1,59 @@
+# XcodeGen の設定ファイル。`xcodegen generate` で Flow.xcodeproj を生成する。
+# https://github.com/yonaskolb/XcodeGen
+name: Flow
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    macOS: "15.0"
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+packages:
+  FlowKit:
+    path: Packages/FlowKit
+
+targets:
+  Flow:
+    type: application
+    platform: auto
+    # 1 つのターゲットで macOS ネイティブ版と iPad 版を作る（Mac Catalyst ではない）。
+    supportedDestinations: [macOS, iOS]
+    sources:
+      - path: App
+    dependencies:
+      - package: FlowKit
+        product: FlowCore
+      - package: FlowKit
+        product: FlowApple
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.flow   # 自分のバンドル ID に変更する
+        PRODUCT_NAME: Flow
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "2"                    # iPad のみ（iPhone は対象外）
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Flow
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: >-
+          UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown
+          UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        # macOS はサンドボックス + ユーザーが選んだフォルダへの読み書き権限
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/Flow.entitlements
+        CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM: XXXXXXXXXX                 # 実機で動かす場合は自分のチーム ID を設定
+
+schemes:
+  Flow:
+    build:
+      targets:
+        Flow: all
+    test:
+      targets:
+        - package: FlowKit/FlowCoreTests

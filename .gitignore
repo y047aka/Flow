@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Xcode（Flow.xcodeproj は project.yml から XcodeGen で生成する）
+*.xcodeproj
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/FlowKit/Package.resolved
