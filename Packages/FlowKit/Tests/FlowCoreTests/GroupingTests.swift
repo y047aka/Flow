@@ -116,7 +116,7 @@ final class SimilarityClustererTests: XCTestCase {
         // a→b→c と少しずつ構図が変わる（パン撮影など）。隣同士が近ければ同じグループ。
         let assets = (0..<4).map { makeAsset("p\($0)", at: TimeInterval($0)) }
         var analyses: [PhotoAsset.ID: ImageAnalysis] = [:]
-        for (i, asset) in assets.enumerated() { analyses[asset.id] = ImageAnalysis(featureVector: vector(angle: Float(i) * 0.4)) }
+        for (i, asset) in assets.enumerated() { analyses[asset.id] = ImageAnalysis(featureVector: vector(angle: Float(i) * 0.3)) }
         XCTAssertEqual(SimilarityClusterer().cluster(assets, analyses: analyses).count, 1)
     }
 }

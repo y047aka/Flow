@@ -7,7 +7,7 @@ public struct GroupingSettings: Codable, Hashable, Sendable {
     /// シーンの中心からこれ以上離れたら別シーン（メートル）。
     public let sceneDistance: Double
 
-    public init(similarityThreshold: Float = 0.45, sceneDistance: Double = 500) {
+    public init(similarityThreshold: Float = 0.38, sceneDistance: Double = 500) {
         self.similarityThreshold = similarityThreshold
         self.sceneDistance = sceneDistance
     }
