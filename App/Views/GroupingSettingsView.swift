@@ -24,18 +24,10 @@ struct GroupingSettingsView: View {
             }
 
             Section {
-                SettingSlider(
-                    value: settings.sceneDistance,
-                    range: GroupingSettings.sceneDistanceRange,
-                    minimumLabel: "100 m", maximumLabel: "5 km",
-                    valueText: distanceText(settings.sceneDistance),
-                    onChange: { value in model.updateGrouping { $0.with(sceneDistance: (value / 50).rounded() * 50) } },
-                    onCommit: model.commitGrouping
-                )
+                Text("撮影日ごとに 1 シーンにまとめます（朝 4 時切り替え。深夜の撮影は前日に含めます）。")
+                    .foregroundStyle(.secondary)
             } header: {
-                Text("シーンを区切る距離")
-            } footer: {
-                Text("撮影日（朝 4 時切り替え）が変わるか、撮影場所がこの距離以上離れたら別のシーンにします。位置情報の無い写真は撮影日だけで区切ります。")
+                Text("シーンの区切り")
             }
 
             Section {
@@ -47,18 +39,13 @@ struct GroupingSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 360, idealWidth: 400, minHeight: 360)
+        .frame(minWidth: 360, idealWidth: 400, minHeight: 300)
     }
 
     private var summary: String {
         guard let catalog = model.catalog else { return "" }
         let groups = catalog.scenes.map(\.groups.count).reduce(0, +)
         return "\n現在 \(catalog.assets.count) 枚 → \(catalog.scenes.count) シーン / \(groups) グループ"
-    }
-
-    private func distanceText(_ meters: Double) -> String {
-        Measurement(value: meters, unit: UnitLength.meters)
-            .formatted(.measurement(width: .abbreviated, usage: .road))
     }
 }
 

@@ -92,8 +92,7 @@ Flow/
                              - 顔の写り品質（目つむり・ブレ）
                              - ラプラシアン分散によるシャープネス
        3. グルーピング      SceneSegmenter → SimilarityClusterer → BestShotSelector
-                             シーン: ①撮影日が変わる（朝4時切替）②位置情報があればシーン中心からの距離 で区切る
-                                     （位置情報が無い写真は撮影日だけで区切る）
+                             シーン: 撮影日ごと（朝4時切替）
  └ 取り込み完了（ここで操作できるようになる）
  └ 自動補正（裏で計算）     中立現像の縮小画像のヒストグラムから露出・ハイライト・シャドウのみ穏やかに補正
                              優先順: 開いている写真 → 各グループのベストショット → 残り
@@ -112,13 +111,11 @@ Flow/
 | 値 | 初期値 |
 |---|---|
 | 似たショットとみなす特徴ベクトル距離（小さいほど厳しい） | 0.38 |
-| シーンを区切る距離（シーン中心から） | 500 m |
 
 コードでのみ変更できる値:
 
 | 値 | 場所 | 初期値 |
 |---|---|---|
-| 同じ場所でも区切る撮影間隔 | `SceneSegmenter.Configuration.maximumTimeGapAtSameLocation` | 3 時間 |
 | 1 日の始まりの時刻 | `SceneSegmenter.Configuration.dayStartHour` | 4 時 |
 | ベストショットの重み | `BestShotSelector.Weights` | 美しさ 1.0 / シャープネス 1.0 / 顔 1.5 |
 | 自動露出の強さ・上限 | `AutoToneEstimator.Configuration` | 60% / ±1EV |

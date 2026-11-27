@@ -73,14 +73,4 @@ public struct GeoCoordinate: Codable, Hashable, Sendable {
         self.latitude = latitude
         self.longitude = longitude
     }
-
-    /// 2 点間の距離（メートル、Haversine）。
-    public func distance(to other: GeoCoordinate) -> Double {
-        let r = 6_371_000.0
-        let lat1 = latitude * .pi / 180, lat2 = other.latitude * .pi / 180
-        let dLat = lat2 - lat1
-        let dLon = (other.longitude - longitude) * .pi / 180
-        let a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
-        return 2 * r * atan2(sqrt(a), sqrt(1 - a))
-    }
 }

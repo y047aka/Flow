@@ -49,7 +49,8 @@ final class AppModel {
         self.developer = developer
         autoTone = .apple(developer: developer)
         do {
-            catalog = try store.load()
+            // 保存済みのシーンは古いロジックで作られている場合があるので、読み込み時に現在のロジックで組み直す（数ミリ秒）。
+            catalog = try store.load().map { $0.regrouped(with: $0.grouping) }
             if let bookmark = catalog?.sourceFolderBookmark { restoreAccess(bookmark) }
             selectedSceneID = catalog?.scenes.first?.id
         } catch {
