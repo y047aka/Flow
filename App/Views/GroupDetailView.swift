@@ -10,14 +10,22 @@ struct GroupDetailView: View {
     /// 情報パネルの開閉（この端末の表示の好みとして覚えておく）。
     @AppStorage("photoInspectorPresented") private var isInspectorPresented = true
 
+    /// 写真の周囲の余白。
+    private static let margin: CGFloat = 24
+
     var body: some View {
         let currentID = selectedID ?? group.bestAssetID ?? group.assetIDs.first
+        let hasFilmstrip = group.assetIDs.count > 1
         VStack(spacing: 0) {
             if let catalog = model.catalog, let id = currentID, let asset = catalog.assets[id] {
                 DevelopedPreview(asset: asset, recipe: catalog.recipe(for: id))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // 複数枚のグループでは、下のフィルムストリップが下側の余白を兼ねる。
+                    .padding(.horizontal, Self.margin)
+                    .padding(.top, Self.margin)
+                    .padding(.bottom, hasFilmstrip ? 0 : Self.margin)
             }
-            if group.assetIDs.count > 1 {
+            if hasFilmstrip {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(group.assetIDs, id: \.self) { id in
@@ -32,9 +40,11 @@ struct GroupDetailView: View {
                             }
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, Self.margin)
+                    .padding(.vertical, 16)
                 }
-                .background(.bar)
+                // 余白の一部として見えるよう、背景は付けない
+                .scrollIndicators(.hidden)
             }
         }
         .navigationTitle("\(group.assetIDs.count) 枚の類似ショット")
