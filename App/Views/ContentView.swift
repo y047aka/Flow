@@ -7,11 +7,12 @@ struct ContentView: View {
     @State private var isPickingFolder = false
     @State private var folderPurpose: FolderPurpose = .importPhotos
     @State private var isShowingGroupingSettings = false
+    @State private var path = NavigationPath()
 
     enum FolderPurpose { case importPhotos, export }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let catalog = model.catalog {
                     LibraryGridView(catalog: catalog)
@@ -30,6 +31,9 @@ struct ContentView: View {
             .navigationDestination(for: SimilarGroup.self) { group in
                 GroupDetailView(group: group)
                     .toolbar { toolbarContent }
+            }
+            .navigationDestination(for: EvaluationRoute.self) { _ in
+                GroupingEvaluationView()
             }
             .toolbar { toolbarContent }
         }
@@ -78,6 +82,12 @@ struct ContentView: View {
             .disabled(model.isBusy)
         }
         ToolbarItem {
+            Button { path.append(EvaluationRoute()) } label: {
+                Label("判定の検証", systemImage: "checklist")
+            }
+            .disabled(model.catalog == nil || model.isBusy)
+        }
+        ToolbarItem {
             Button { isShowingGroupingSettings = true } label: {
                 Label("グループ分け", systemImage: "slider.horizontal.3")
             }
@@ -108,6 +118,9 @@ struct ContentView: View {
 }
 
 /// ツールバーの自動補正の進捗と、一時停止／再開ボタン。
+/// 判定の検証画面への遷移先。
+struct EvaluationRoute: Hashable {}
+
 private struct AutoToneStatus: View {
     let progress: (completed: Int, total: Int)
     let isPaused: Bool

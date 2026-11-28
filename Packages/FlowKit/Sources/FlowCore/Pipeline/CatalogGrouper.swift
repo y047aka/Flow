@@ -20,14 +20,20 @@ public struct CatalogGrouper: Sendable {
     /// シーンとグループの ID は先頭の写真の ID にする。設定を変えて組み直しても、
     /// 同じ写真から始まるシーン・グループは同じ ID のままなので、UI の選択状態が保たれる。
     public func group(_ assets: [PhotoAsset], analyses: [PhotoAsset.ID: ImageAnalysis]) -> [PhotoScene] {
+        groupWithLinks(assets, analyses: analyses).map(\.scene)
+    }
+
+    /// グループ分けと、シーンごとの判定の記録（判定の検証用）。
+    public func groupWithLinks(_ assets: [PhotoAsset], analyses: [PhotoAsset.ID: ImageAnalysis]) -> [(scene: PhotoScene, links: [PhotoLink])] {
         segmenter.segment(assets).compactMap { sceneAssets in
             guard let first = sceneAssets.first else { return nil }
-            let groups = clusterer.cluster(sceneAssets, analyses: analyses).compactMap { members -> SimilarGroup? in
+            let result = clusterer.clusterWithLinks(sceneAssets, analyses: analyses)
+            let groups = result.groups.compactMap { members -> SimilarGroup? in
                 let ids = members.map(\.id)
                 return ids.first.map { SimilarGroup(id: $0, assetIDs: ids, bestAssetID: selector.selectBest(from: ids, analyses: analyses)) }
             }
             let dates = sceneAssets.compactMap(\.captureDate)
-            return PhotoScene(id: first.id, startDate: dates.min(), endDate: dates.max(), groups: groups)
+            return (PhotoScene(id: first.id, startDate: dates.min(), endDate: dates.max(), groups: groups), result.links)
         }
     }
 }

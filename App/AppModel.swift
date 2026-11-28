@@ -102,6 +102,8 @@ final class AppModel {
             let catalog = result.catalog
                 .regrouped(with: groupingSettings)
                 .with(presetID: self.catalog?.presetID ?? result.catalog.presetID)
+                // 正解データはファイルの場所で記録しているので、取り込み直しても引き継げる
+                .with(groupingLabels: self.catalog?.groupingLabels)
                 .with(sourceFolderBookmark: try? folder.bookmarkData(options: Self.bookmarkCreationOptions))
             self.catalog = catalog
             failures = result.failures
@@ -139,6 +141,14 @@ final class AppModel {
 
     /// 現在のグルーピング設定を保存する（スライダー操作の終わりなどに呼ぶ）。
     func commitGrouping() {
+        save()
+    }
+
+    // MARK: - 判定の検証
+
+    /// 続けて撮った 2 枚の正解（同じグループであるべきなら true、別なら false、nil で取り消し）を記録する。
+    func setLabel(_ label: Bool?, for pair: PhotoPair) {
+        catalog = catalog?.with(label: label, for: pair)
         save()
     }
 

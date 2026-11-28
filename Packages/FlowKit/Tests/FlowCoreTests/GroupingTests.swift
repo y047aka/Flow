@@ -80,10 +80,30 @@ final class SimilarityClustererTests: XCTestCase {
         XCTAssertEqual(groups.map { $0.map(\.fileName) }, [["a", "b"], ["c", "d"]])
     }
 
-    func testTimeGapBreaksGroupEvenIfSimilar() {
+    func testSimilarShotsJoinRegardlessOfTimeGap() {
+        // 撮影間隔は問わない: 10 分空いても見た目が近ければ同じグループ
         let a = makeAsset("a", at: 0), b = makeAsset("b", at: 600)
         let analyses = [a.id: ImageAnalysis(featureVector: vector(angle: 0)), b.id: ImageAnalysis(featureVector: vector(angle: 0))]
-        XCTAssertEqual(SimilarityClusterer().cluster([a, b], analyses: analyses).count, 2)
+        XCTAssertEqual(SimilarityClusterer().cluster([a, b], analyses: analyses).count, 1)
+    }
+
+    func testLinksRecordDecisions() {
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 0.5), c = makeAsset("c", at: 10), d = makeAsset("d", at: 20), e = makeAsset("e", at: 30)
+        let analyses: [PhotoAsset.ID: ImageAnalysis] = [
+            a.id: ImageAnalysis(featureVector: vector(angle: 0)),
+            b.id: ImageAnalysis(featureVector: vector(angle: 2.0)),
+            c.id: ImageAnalysis(featureVector: vector(angle: 2.1)),   // b との距離 ≈ 0.10
+            d.id: ImageAnalysis(featureVector: vector(angle: 0.5)),   // 遠い
+        ]
+        let result = SimilarityClusterer().clusterWithLinks([a, b, c, d, e], analyses: analyses)
+        XCTAssertEqual(result.links.map(\.next.fileName), ["b", "c", "d", "e"])
+        XCTAssertEqual(result.links[0].decision, .burst(interval: 0.5))
+        guard case .similar(let near) = result.links[1].decision else { return XCTFail("\(result.links[1].decision)") }
+        XCTAssertEqual(near, 0.1, accuracy: 0.01)
+        guard case .different(let far?) = result.links[2].decision else { return XCTFail("\(result.links[2].decision)") }
+        XCTAssertGreaterThan(far, 0.38)
+        XCTAssertEqual(result.links[3].decision, .different(distance: nil)) // 特徴ベクトルなし
+        XCTAssertEqual(result.groups.map { $0.map(\.fileName) }, [["a", "b", "c"], ["d"], ["e"]])
     }
 
     func testMissingAnalysisMakesSingleton() {
