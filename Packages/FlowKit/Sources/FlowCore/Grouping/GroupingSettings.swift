@@ -17,7 +17,7 @@ public struct GroupingSettings: Codable, Hashable, Sendable {
     public static let `default` = GroupingSettings()
 
     // UI のスライダーの範囲
-    public static let similarityThresholdRange: ClosedRange<Float> = 0.2...0.9
+    public static let similarityThresholdRange: ClosedRange<Float> = 0.3...0.7
 
     /// 領域ごとの比較を使うときに、画像全体の距離と混ぜる割合。
     static let tileWeight: Float = 0.5
