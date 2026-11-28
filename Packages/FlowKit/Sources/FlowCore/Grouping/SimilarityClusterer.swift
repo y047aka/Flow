@@ -9,7 +9,7 @@ import Foundation
 ///    - 似たショット: グループの直近メンバーとの特徴ベクトルの距離が閾値以下（撮影間隔は問わない）
 /// 3. すべてのカメラのグループを、先頭の写真の撮影順に並べる。
 ///
-/// 各写真を直前のグループに入れたか・その理由は `PhotoLink` として記録され、判定の検証に使える。
+/// 各写真を直前のグループに入れたか・その理由は `PhotoLink` として記録され、判定の確認に使える。
 public struct SimilarityClusterer: Sendable {
     public struct Configuration: Sendable {
         /// 特徴ベクトルの距離がこれ以下なら「似ている」とみなす。
@@ -99,9 +99,11 @@ public struct PhotoLink: Hashable, Sendable {
     public let previous: PhotoAsset
     public let next: PhotoAsset
     public let decision: LinkDecision
+}
 
-    /// 正解データのキー。
-    public var pair: PhotoPair { PhotoPair(previous: previous, next: next) }
+extension PhotoLink: Identifiable {
+    /// 後の写真は 1 つの判定にしか現れないので、その ID で識別できる。
+    public var id: PhotoAsset.ID { next.id }
 }
 
 /// 写真を直前のグループに入れたか、その理由。

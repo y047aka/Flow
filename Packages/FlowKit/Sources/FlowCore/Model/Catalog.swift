@@ -48,8 +48,6 @@ public struct Catalog: Codable, Sendable {
     public let sourceFolderBookmark: Data?
     /// グルーピングの設定。古いカタログには無いので省略可能。
     public let groupingSettings: GroupingSettings?
-    /// グループ分けの正解データ（同じカメラで続けて撮った 2 枚が同じグループであるべきか）。古いカタログには無い。
-    public let groupingLabels: [PhotoPair: Bool]?
 
     public init(
         assets: [PhotoAsset.ID: PhotoAsset] = [:],
@@ -58,8 +56,7 @@ public struct Catalog: Codable, Sendable {
         scenes: [PhotoScene] = [],
         presetID: DevelopPreset.ID = DevelopPreset.neutral.id,
         sourceFolderBookmark: Data? = nil,
-        groupingSettings: GroupingSettings? = nil,
-        groupingLabels: [PhotoPair: Bool]? = nil
+        groupingSettings: GroupingSettings? = nil
     ) {
         self.version = Self.currentVersion
         self.assets = assets
@@ -69,7 +66,6 @@ public struct Catalog: Codable, Sendable {
         self.presetID = presetID
         self.sourceFolderBookmark = sourceFolderBookmark
         self.groupingSettings = groupingSettings
-        self.groupingLabels = groupingLabels
     }
 
     // MARK: - 派生値
@@ -91,6 +87,14 @@ public struct Catalog: Codable, Sendable {
         scenes.flatMap(\.groups).compactMap { $0.bestAssetID.flatMap { assets[$0] } }
     }
 
+    /// シーンごとの、同じカメラで続けて撮った 2 枚の判定の記録（判定の確認画面用）。
+    public var linksByScene: [PhotoScene.ID: [PhotoLink]] {
+        Dictionary(
+            grouping.grouper.groupWithLinks(Array(assets.values), analyses: analyses).map { ($0.scene.id, $0.links) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     // MARK: - 新しいカタログを作る
 
     public func with(presetID: DevelopPreset.ID) -> Catalog {
@@ -107,19 +111,6 @@ public struct Catalog: Codable, Sendable {
         return copy(autoRecipes: autoRecipes.merging([assetID: autoRecipe]) { _, new in new })
     }
 
-    /// 2 枚の正解（同じグループであるべきなら true、別なら false、nil で取り消し）を設定したカタログ。
-    public func with(label: Bool?, for pair: PhotoPair) -> Catalog {
-        let current = groupingLabels ?? [:]
-        let updated = label.map { value in current.merging([pair: value]) { _, new in new } }
-            ?? current.filter { $0.key != pair }
-        return copy(groupingLabels: .some(updated))
-    }
-
-    /// 正解データを差し替えたカタログ（取り込み直したときに引き継ぐため）。
-    public func with(groupingLabels: [PhotoPair: Bool]?) -> Catalog {
-        copy(groupingLabels: .some(groupingLabels))
-    }
-
     /// 解析をやり直さずに、別の設定でグルーピングし直したカタログ。数百枚なら数ミリ秒で終わる。
     public func regrouped(with settings: GroupingSettings) -> Catalog {
         copy(scenes: settings.grouper.group(Array(assets.values), analyses: analyses), groupingSettings: settings)
@@ -130,8 +121,7 @@ public struct Catalog: Codable, Sendable {
         scenes: [PhotoScene]? = nil,
         presetID: DevelopPreset.ID? = nil,
         sourceFolderBookmark: Data?? = nil,
-        groupingSettings: GroupingSettings? = nil,
-        groupingLabels: [PhotoPair: Bool]?? = nil
+        groupingSettings: GroupingSettings? = nil
     ) -> Catalog {
         Catalog(
             assets: assets,
@@ -140,8 +130,7 @@ public struct Catalog: Codable, Sendable {
             scenes: scenes ?? self.scenes,
             presetID: presetID ?? self.presetID,
             sourceFolderBookmark: sourceFolderBookmark ?? self.sourceFolderBookmark,
-            groupingSettings: groupingSettings ?? self.groupingSettings,
-            groupingLabels: groupingLabels ?? self.groupingLabels
+            groupingSettings: groupingSettings ?? self.groupingSettings
         )
     }
 }

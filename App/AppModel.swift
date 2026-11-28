@@ -55,6 +55,9 @@ final class AppModel {
         do {
             // 保存済みのシーンは古いロジックで作られている場合があるので、読み込み時に現在のロジックで組み直す（数ミリ秒）。
             catalog = try store.load().map { $0.regrouped(with: $0.grouping) }
+            // 以前のバージョンが保存した項目（廃止した正解データなど）はカタログの型に無いので読み込まれない。
+            // 読み込んだ内容で保存し直して、ファイルからも消す。
+            if catalog != nil { save() }
             if let bookmark = catalog?.sourceFolderBookmark { restoreAccess(bookmark) }
         } catch {
             errorMessage = "カタログを読み込めませんでした: \(error.localizedDescription)"
@@ -102,8 +105,6 @@ final class AppModel {
             let catalog = result.catalog
                 .regrouped(with: groupingSettings)
                 .with(presetID: self.catalog?.presetID ?? result.catalog.presetID)
-                // 正解データはファイルの場所で記録しているので、取り込み直しても引き継げる
-                .with(groupingLabels: self.catalog?.groupingLabels)
                 .with(sourceFolderBookmark: try? folder.bookmarkData(options: Self.bookmarkCreationOptions))
             self.catalog = catalog
             failures = result.failures
@@ -141,14 +142,6 @@ final class AppModel {
 
     /// 現在のグルーピング設定を保存する（スライダー操作の終わりなどに呼ぶ）。
     func commitGrouping() {
-        save()
-    }
-
-    // MARK: - 判定の検証
-
-    /// 続けて撮った 2 枚の正解（同じグループであるべきなら true、別なら false、nil で取り消し）を記録する。
-    func setLabel(_ label: Bool?, for pair: PhotoPair) {
-        catalog = catalog?.with(label: label, for: pair)
         save()
     }
 

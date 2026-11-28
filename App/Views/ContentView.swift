@@ -32,8 +32,8 @@ struct ContentView: View {
                 GroupDetailView(group: group)
                     .toolbar { toolbarContent }
             }
-            .navigationDestination(for: EvaluationRoute.self) { _ in
-                GroupingEvaluationView()
+            .navigationDestination(for: DecisionsRoute.self) { _ in
+                GroupingDecisionsView()
             }
             .toolbar { toolbarContent }
         }
@@ -82,8 +82,8 @@ struct ContentView: View {
             .disabled(model.isBusy)
         }
         ToolbarItem {
-            Button { path.append(EvaluationRoute()) } label: {
-                Label("判定の検証", systemImage: "checklist")
+            Button { path.append(DecisionsRoute()) } label: {
+                Label("判定の確認", systemImage: "list.bullet.rectangle")
             }
             .disabled(model.catalog == nil || model.isBusy)
         }
@@ -118,8 +118,8 @@ struct ContentView: View {
 }
 
 /// ツールバーの自動補正の進捗と、一時停止／再開ボタン。
-/// 判定の検証画面への遷移先。
-struct EvaluationRoute: Hashable {}
+/// 判定の確認画面への遷移先。
+struct DecisionsRoute: Hashable {}
 
 private struct AutoToneStatus: View {
     let progress: (completed: Int, total: Int)

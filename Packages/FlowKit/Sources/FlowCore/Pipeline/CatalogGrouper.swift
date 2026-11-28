@@ -23,7 +23,7 @@ public struct CatalogGrouper: Sendable {
         groupWithLinks(assets, analyses: analyses).map(\.scene)
     }
 
-    /// グループ分けと、シーンごとの判定の記録（判定の検証用）。
+    /// グループ分けと、シーンごとの判定の記録（判定の確認用）。
     public func groupWithLinks(_ assets: [PhotoAsset], analyses: [PhotoAsset.ID: ImageAnalysis]) -> [(scene: PhotoScene, links: [PhotoLink])] {
         segmenter.segment(assets).compactMap { sceneAssets in
             guard let first = sceneAssets.first else { return nil }

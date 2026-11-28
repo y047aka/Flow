@@ -200,3 +200,15 @@ final class BestShotSelectorTests: XCTestCase {
         XCTAssertEqual(BestShotSelector().selectBest(from: ids, analyses: [:]), ids[0])
     }
 }
+
+final class LinksBySceneTests: XCTestCase {
+    func testLinksBySceneListsConsecutivePairsPerScene() {
+        let assets = [makeAsset("a", at: 0), makeAsset("b", at: 2), makeAsset("c", at: 4), makeAsset("d", at: 86_400)]
+        let catalog = Catalog(assets: Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })).regrouped(with: .default)
+        let links = catalog.linksByScene
+        XCTAssertEqual(catalog.scenes.count, 2)
+        XCTAssertEqual(links[catalog.scenes[0].id]?.map(\.next.fileName), ["b", "c"])
+        XCTAssertEqual(links[catalog.scenes[1].id]?.isEmpty, true)
+        XCTAssertEqual(links[catalog.scenes[0].id]?.map(\.id), [assets[1].id, assets[2].id])
+    }
+}
