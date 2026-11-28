@@ -99,9 +99,10 @@ final class SimilarityClustererTests: XCTestCase {
         XCTAssertEqual(result.links.map(\.next.fileName), ["b", "c", "d", "e"])
         XCTAssertEqual(result.links[0].decision, .burst(interval: 0.5))
         guard case .similar(let near) = result.links[1].decision else { return XCTFail("\(result.links[1].decision)") }
-        XCTAssertEqual(near, 0.1, accuracy: 0.01)
+        XCTAssertEqual(near.combined, 0.1, accuracy: 0.01)
+        XCTAssertNil(near.tiles) // 領域ごとの特徴ベクトルが無ければ画像全体のみ
         guard case .different(let far?) = result.links[2].decision else { return XCTFail("\(result.links[2].decision)") }
-        XCTAssertGreaterThan(far, 0.38)
+        XCTAssertGreaterThan(far.combined, 0.38)
         XCTAssertEqual(result.links[3].decision, .different(distance: nil)) // 特徴ベクトルなし
         XCTAssertEqual(result.groups.map { $0.map(\.fileName) }, [["a", "b", "c"], ["d"], ["e"]])
     }
@@ -210,5 +211,84 @@ final class LinksBySceneTests: XCTestCase {
         XCTAssertEqual(links[catalog.scenes[0].id]?.map(\.next.fileName), ["b", "c"])
         XCTAssertEqual(links[catalog.scenes[1].id]?.isEmpty, true)
         XCTAssertEqual(links[catalog.scenes[0].id]?.map(\.id), [assets[1].id, assets[2].id])
+    }
+}
+
+final class TileComparisonTests: XCTestCase {
+    /// 全体は同じ、領域ごとの距離が tileAngle だけ違う 2 枚（2 秒間隔なので連写には当たらない）。
+    private func pair(tileAngle: Float) -> ([PhotoAsset], [PhotoAsset.ID: ImageAnalysis]) {
+        let a = makeAsset("a", at: 0), b = makeAsset("b", at: 2)
+        let tilesA = (0..<4).map { _ in vector(angle: 0) }
+        // 右下の領域だけ違う（例: 同じ構図で、右下に写る人が違う）
+        let tilesB = [vector(angle: 0), vector(angle: 0), vector(angle: 0), vector(angle: tileAngle)]
+        return ([a, b], [
+            a.id: ImageAnalysis(featureVector: vector(angle: 0), tileFeatureVectors: tilesA),
+            b.id: ImageAnalysis(featureVector: vector(angle: 0.2), tileFeatureVectors: tilesB),
+        ])
+    }
+
+    func testTileDifferenceSplitsSameComposition() {
+        let (assets, analyses) = pair(tileAngle: 2.0)
+        // 全体の距離 ≈ 0.20 だけなら同じグループ
+        XCTAssertEqual(SimilarityClusterer(configuration: .init(tileWeight: 0)).cluster(assets, analyses: analyses).count, 1)
+        // 領域ごとの平均 ≈ 0.84/4 = 0.21 → 混ぜた距離 ≈ 0.21 → まだ同じ
+        // 領域の差を大きくすると別グループになる
+        let (assets2, analyses2) = pair(tileAngle: 3.1)
+        let clusterer = SimilarityClusterer(configuration: .init(maximumDistance: 0.3))
+        XCTAssertEqual(clusterer.cluster(assets2, analyses: analyses2).count, 2)
+        XCTAssertEqual(SimilarityClusterer(configuration: .init(maximumDistance: 0.3, tileWeight: 0)).cluster(assets2, analyses: analyses2).count, 1)
+    }
+
+    func testCombinedDistanceBreakdown() {
+        let (_, analyses) = pair(tileAngle: 2.0)
+        let values = Array(analyses.values).sorted { ($0.featureVector?.values[1] ?? 0) < ($1.featureVector?.values[1] ?? 0) }
+        let distance = try! XCTUnwrap(SimilarityClusterer().visualDistance(values[0], values[1]))
+        let tile = 2 * sin(Float(1.0))  // 角度 2.0 の距離
+        XCTAssertEqual(distance.whole, 2 * sin(0.1), accuracy: 1e-4)
+        XCTAssertEqual(distance.tiles!, tile / 4, accuracy: 1e-4)
+        XCTAssertEqual(distance.combined, 0.5 * distance.whole + 0.5 * distance.tiles!, accuracy: 1e-5)
+    }
+
+    func testMissingTilesFallBackToWholeImage() {
+        let a = ImageAnalysis(featureVector: vector(angle: 0), tileFeatureVectors: (0..<4).map { _ in vector(angle: 0) })
+        let b = ImageAnalysis(featureVector: vector(angle: 0.3))  // 古いカタログの写真
+        let distance = try! XCTUnwrap(SimilarityClusterer().visualDistance(a, b))
+        XCTAssertNil(distance.tiles)
+        XCTAssertEqual(distance.combined, distance.whole)
+    }
+
+    func testSettingsToggleControlsTileWeight() {
+        XCTAssertEqual(GroupingSettings.default.grouper.clusterer.configuration.tileWeight, 0.5)
+        XCTAssertEqual(GroupingSettings.default.with(usesTileComparison: false).grouper.clusterer.configuration.tileWeight, 0)
+    }
+
+    func testSettingsDecodeFromOlderVersion() throws {
+        let decoded = try JSONDecoder().decode(GroupingSettings.self, from: Data(#"{"similarityThreshold":0.3,"sceneDistance":500}"#.utf8))
+        XCTAssertEqual(decoded, GroupingSettings(similarityThreshold: 0.3, usesTileComparison: true))
+    }
+}
+
+final class FeatureVectorCodingTests: XCTestCase {
+    func testRoundTripAsBytes() throws {
+        let vector = FeatureVector([0, 1.5, -2.25, .pi, Float.leastNonzeroMagnitude])
+        let data = try JSONEncoder().encode(vector)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"data\""))
+        XCTAssertEqual(try JSONDecoder().decode(FeatureVector.self, from: data), vector)
+    }
+
+    func testDecodesOlderArrayFormat() throws {
+        let decoded = try JSONDecoder().decode(FeatureVector.self, from: Data(#"{"values":[0.5,-1]}"#.utf8))
+        XCTAssertEqual(decoded, FeatureVector([0.5, -1]))
+    }
+
+    func testBytesAreSmallerThanArray() throws {
+        // 実際の特徴ベクトルに近い、桁の多い値（正規化済み 768 次元）
+        let raw = (0..<768).map { sin(Float($0) * 1.618) }
+        let norm = raw.map { $0 * $0 }.sum().squareRoot()
+        let vector = FeatureVector(raw.map { $0 / norm })
+        let encoder = CatalogStore.encoder
+        let bytes = try encoder.encode(vector).count
+        let array = try encoder.encode(["values": vector.values]).count
+        XCTAssertLessThan(bytes, array / 2)
     }
 }

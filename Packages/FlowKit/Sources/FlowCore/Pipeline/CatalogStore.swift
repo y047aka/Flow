@@ -21,10 +21,11 @@ public struct CatalogStore: Sendable {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    static let encoder: JSONEncoder = {
+    public static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
-        e.outputFormatting = [.sortedKeys]
+        // Base64 の「/」を「\/」にしないことで、特徴ベクトルの保存サイズを抑える。
+        e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return e
     }()
 

@@ -25,6 +25,7 @@ public struct VisionImageAnalyzer: ImageAnalyzing {
         let faceQualities = faceCaptureQualities(handler)
         return ImageAnalysis(
             featureVector: featurePrint(handler),
+            tileFeatureVectors: tileFeaturePrints(image),
             aestheticsScore: aesthetics?.overallScore,
             isUtility: aesthetics?.isUtility,
             sharpness: GrayscaleBuffer(image: image, maximumDimension: 1024)?.normalizedSharpness(),
@@ -40,6 +41,23 @@ public struct VisionImageAnalyzer: ImageAnalyzing {
         // OS バージョンが変わってもベクトルの互換性を保つため、リビジョンを固定する。
         request.revision = VNGenerateImageFeaturePrintRequestRevision2
         return perform(request, on: handler)?.results?.first.map { FeatureVector(floats(from: $0)) }
+    }
+
+    /// 画像を 2×2 に分けた領域ごとの特徴ベクトル（左上・右上・左下・右下）。1 つでも取れなければ nil。
+    /// プレビューは回転を適用済みなので、写真の向きに関係なく同じ位置の領域どうしを比べられる。
+    static func tileFeaturePrints(_ image: CGImage, rows: Int = 2, columns: Int = 2) -> [FeatureVector]? {
+        let tileWidth = image.width / columns
+        let tileHeight = image.height / rows
+        guard tileWidth > 0, tileHeight > 0 else { return nil }
+        let vectors = (0..<rows).flatMap { row in
+            (0..<columns).map { column in
+                // CGImage の切り抜きは左上が原点
+                image.cropping(to: CGRect(x: column * tileWidth, y: row * tileHeight, width: tileWidth, height: tileHeight))
+                    .flatMap { featurePrint(VNImageRequestHandler(cgImage: $0, orientation: .up, options: [:])) }
+            }
+        }
+        let complete = vectors.compactMap { $0 }
+        return complete.count == rows * columns ? complete : nil
     }
 
     static func aestheticsScores(_ handler: VNImageRequestHandler) -> VNImageAestheticsScoresObservation? {

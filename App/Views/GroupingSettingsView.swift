@@ -17,10 +17,17 @@ struct GroupingSettingsView: View {
                     onChange: { value in model.updateGrouping { $0.with(similarityThreshold: value) } },
                     onCommit: model.commitGrouping
                 )
+                Toggle("領域ごとにも比べる（2×2）", isOn: Binding(
+                    get: { settings.usesTileComparison },
+                    set: { value in
+                        model.updateGrouping { $0.with(usesTileComparison: value) }
+                        model.commitGrouping()
+                    }
+                ))
             } header: {
                 Text("似たショットの判定")
             } footer: {
-                Text("同じ構図で別の人が写った写真がまとまってしまうときは「厳しい」側へ。同じカメラで 1 秒以内に撮った連写は、この設定に関係なく同じグループになります。別のカメラの写真は同じグループにしません。\(summary)")
+                Text("同じ構図で別の人が写った写真がまとまってしまうときは「厳しい」側へ。同じカメラで 1 秒以内に撮った連写は、この設定に関係なく同じグループになります。別のカメラの写真は同じグループにしません。「領域ごとにも比べる」をオンにすると、画像を 4 分割した領域ごとの違いも距離に含め、同じ構図で人や物の位置が違う写真を分けやすくなります（この機能より前に取り込んだ写真には効きません。取り込み直すと有効になります）。\(summary)")
             }
 
             Section {

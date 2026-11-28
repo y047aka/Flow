@@ -187,13 +187,17 @@ extension LinkDecision {
     /// 判定の理由の説明。
     func explanation(threshold: Float) -> String {
         let format = FloatingPointFormatStyle<Float>.number.precision(.fractionLength(2))
+        func describe(_ d: VisualDistance) -> String {
+            d.tiles.map { "距離 \(d.combined.formatted(format))（全体 \(d.whole.formatted(format))・領域 \($0.formatted(format))）" }
+                ?? "距離 \(d.combined.formatted(format))（全体のみ）"
+        }
         return switch self {
         case .burst(let interval):
             "連写（\(interval.formatted(.number.precision(.fractionLength(1)))) 秒間隔）"
         case .similar(let distance):
-            "距離 \(distance.formatted(format)) ≤ 閾値 \(threshold.formatted(format))"
+            "\(describe(distance)) ≤ 閾値 \(threshold.formatted(format))"
         case .different(let distance?):
-            "距離 \(distance.formatted(format)) > 閾値 \(threshold.formatted(format))"
+            "\(describe(distance)) > 閾値 \(threshold.formatted(format))"
         case .different(nil):
             "特徴ベクトルが無いため比較できません"
         }
