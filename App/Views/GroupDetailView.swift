@@ -2,10 +2,13 @@ import FlowCore
 import SwiftUI
 
 /// 類似グループの詳細: 現在のプリセットで現像した大きなプレビューと、メンバーのフィルムストリップ。
+/// 右側に、プリセット・自動補正・スコア・撮影情報をまとめた開閉可能な情報パネルを表示する。
 struct GroupDetailView: View {
     @Environment(AppModel.self) private var model
     let group: SimilarGroup
     @State private var selectedID: PhotoAsset.ID?
+    /// 情報パネルの開閉（この端末の表示の好みとして覚えておく）。
+    @AppStorage("photoInspectorPresented") private var isInspectorPresented = true
 
     var body: some View {
         let currentID = selectedID ?? group.bestAssetID ?? group.assetIDs.first
@@ -13,8 +16,6 @@ struct GroupDetailView: View {
             if let catalog = model.catalog, let id = currentID, let asset = catalog.assets[id] {
                 DevelopedPreview(asset: asset, recipe: catalog.recipe(for: id))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                MetadataBar(asset: asset, analysis: catalog.analyses[id], isBest: id == group.bestAssetID,
-                            isAutoTonePending: model.isAutoTonePending(id), isAutoTonePaused: model.isAutoTonePaused)
             }
             if group.assetIDs.count > 1 {
                 ScrollView(.horizontal) {
@@ -37,6 +38,20 @@ struct GroupDetailView: View {
             }
         }
         .navigationTitle("\(group.assetIDs.count) 枚の類似ショット")
+        .inspector(isPresented: $isInspectorPresented) {
+            if let id = currentID, let asset = model.catalog?.assets[id] {
+                PhotoInspector(asset: asset, group: group)
+                    .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
+            }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button { isInspectorPresented.toggle() } label: {
+                    Label(isInspectorPresented ? "情報パネルを閉じる" : "情報パネルを開く", systemImage: "sidebar.trailing")
+                }
+                .help("プリセット・自動補正・スコア・撮影情報のパネルを開閉します")
+            }
+        }
         // 開いている写真の自動補正を最優先で計算させる。計算が済むとレシピが変わり、プレビューが再現像される。
         .task(id: currentID) { model.focusedAssetID = currentID }
         .onDisappear { model.focusedAssetID = nil }
@@ -77,56 +92,5 @@ private struct DevelopedPreview: View {
     private struct RenderKey: Equatable {
         var assetID: PhotoAsset.ID
         var recipe: DevelopRecipe
-    }
-}
-
-private struct MetadataBar: View {
-    let asset: PhotoAsset
-    let analysis: ImageAnalysis?
-    let isBest: Bool
-    let isAutoTonePending: Bool
-    let isAutoTonePaused: Bool
-
-    var body: some View {
-        HStack(spacing: 16) {
-            if isBest { Label("ベスト", systemImage: "star.fill").foregroundStyle(.yellow) }
-            Text(asset.fileName).bold()
-            Text(exposureSummary).foregroundStyle(.secondary)
-            Spacer()
-            if isAutoTonePending {
-                HStack(spacing: 6) {
-                    if isAutoTonePaused {
-                        Image(systemName: "pause.circle")
-                        Text("自動補正は一時停止中（撮って出し）")
-                    } else {
-                        ProgressView().controlSize(.small)
-                        Text("自動補正を計算中（今は撮って出し）")
-                    }
-                }
-                .foregroundStyle(.secondary)
-            }
-            if let score = analysis?.aestheticsScore {
-                Text("美しさ \(score, format: .number.precision(.fractionLength(2)))")
-            }
-            if let sharpness = analysis?.sharpness {
-                Text("シャープ \(sharpness, format: .number.precision(.fractionLength(2)))")
-            }
-        }
-        .font(.callout)
-        .monospacedDigit()
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-
-    private var exposureSummary: String {
-        let m = asset.metadata
-        let parts: [String?] = [
-            m.cameraModel,
-            m.focalLength.map { "\(Int($0))mm" },
-            m.fNumber.map { "f/\($0.formatted(.number.precision(.fractionLength(0...1))))" },
-            m.exposureTime.map { $0 >= 1 ? "\($0.formatted())s" : "1/\(Int((1 / $0).rounded()))s" },
-            m.iso.map { "ISO \($0)" },
-        ]
-        return parts.compactMap { $0 }.joined(separator: "  ")
     }
 }

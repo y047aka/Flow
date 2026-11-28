@@ -153,10 +153,6 @@ final class AppModel {
         return progress
     }
 
-    func isAutoTonePending(_ id: PhotoAsset.ID) -> Bool {
-        catalog.map { $0.assets[id] != nil && $0.autoRecipes[id] == nil } ?? false
-    }
-
     /// 自動補正の計算を一時停止する。計算中の 1 枚は最後まで計算して結果を残す。
     /// 書き出しは補正なしで書き出さないよう、停止中でも対象の写真だけはその場で計算する。
     func pauseAutoTone() {

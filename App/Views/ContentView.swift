@@ -98,17 +98,6 @@ struct ContentView: View {
             }
         }
         ToolbarItem {
-            Picker("プリセット", selection: Binding(
-                get: { model.catalog?.presetID ?? DevelopPreset.neutral.id },
-                set: { model.setPreset($0) }
-            )) {
-                ForEach(DevelopPreset.builtIn) { preset in
-                    Text(preset.name).tag(preset.id)
-                }
-            }
-            .disabled(model.catalog == nil)
-        }
-        ToolbarItem {
             Button { pickFolder(for: .export) } label: {
                 Label("ベストショットを書き出し", systemImage: "square.and.arrow.up")
             }
